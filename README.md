@@ -83,6 +83,6 @@ pnpm demo:gif                              # re-record docs/assets/demo.gif
 - every decision is explainable and recorded locally
 - only synthetic data in examples, tests and screenshots
 
-Read [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
+Read [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. How Brad is built, including the use of Claude Code as a development partner: [DEVELOPMENT.md](DEVELOPMENT.md). Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and decision records in [docs/adr](docs/adr). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Licensed under Apache-2.0.
