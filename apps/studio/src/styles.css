@@ -203,3 +203,13 @@ button.small-btn { font-size: 0.8rem; padding: 0.25rem 0.6rem; }
 .badge.kind-policy { background: var(--warn-soft); color: var(--warn); }
 .badge.kind-lifecycle, .badge.kind-import { background: var(--line); color: var(--text); }
 .badge.kind-grant { background: var(--ok-soft); color: var(--ok); }
+
+/* Correction loop */
+.correction { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.correction-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.correction-row .note { flex: 1 1 200px; font-size: 0.85rem; }
+button:disabled { opacity: 0.4; cursor: default; }
+.suggestion { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); }
+.suggestion p { margin: 2px 0 6px; }
+.applied { color: var(--ok); font-weight: 600; }
+.badge.kind-correction { background: var(--accent); color: #fff; }

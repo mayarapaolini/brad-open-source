@@ -2,7 +2,7 @@
 
 **Brad is a local-first control plane that transforms a person's priorities, relationships and constraints into a governed portfolio of AI agents.**
 
-> **Status:** open-source architecture and specification for a personal multi-agent system, with its first MVP in development. The vertical slice below runs today. Nothing connects to real inboxes, calendars or external services yet.
+> **Status:** functional local MVP. The diagnostic, life map, agent generation, lifecycle, permission grants, policy simulation, correction loop, audit and import/export run today. External adapters and real-world inbox/calendar integrations are not implemented yet.
 
 ![Brad Studio demo: diagnostic, draft agents, explained prioritisation, policy decisions, governance and audit](docs/assets/demo.gif)
 
@@ -26,19 +26,21 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 4. **Simulation:** Brad ranks a synthetic inbox and answers questions like *"why did this family message get priority?"* Each score is a sum of named rules you can inspect.
 5. **Policy engine:** you ask *"can this agent do this?"* and get `allow`, `deny` or `confirm` with a full rule trace. Deny by default, fixed rule order, and no LLM involved.
 6. **Governance:** an agent moves `draft → configured → simulated → approved → active` only when it has a goal, requested capabilities, a policy simulation you have seen and a current grant. You grant capabilities for 30 days and can revoke them at any time; a revoked grant denies the action immediately.
-7. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON; imported active agents arrive paused.
+7. **Correction loop:** when a ranking looks wrong, mark the item as *should be Now / Today / Later*. Brad records the feedback, proposes one concrete life-map change (for example *"Let Jordan Blake interrupt quiet hours: score 61 → 86, Today → Now"*) and applies it only when you click. Adding a new person is never automatic.
+8. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON; imported active agents arrive paused.
 
 ## Works today · in development · planned
 
 | Works today | In development | Planned |
 | --- | --- | --- |
 | Local Studio (EN/PT) | CLI for validation and migrations | Encryption at rest for the local store |
-| Wheel of Life diagnostic | Correction loop (owner feedback on decisions) | Optional adapters: Inkus, Obsidian, Hermes |
+| Wheel of Life diagnostic | | Optional adapters: Inkus, Obsidian, Hermes |
 | Editable life map: goals, people, boundaries | | Real inbox and calendar connectors |
 | Draft agent generation (no grants) | | Narrow, confirm-first automation recipes |
 | Agent lifecycle with enforced requirements | | Threat model and security review |
 | Time-boxed grants with revocation | | |
 | Explainable priority simulation | | |
+| Correction loop: feedback → suggested change → apply | | |
 | Deterministic policy engine with what-if checks | | |
 | Local decision history (audit view) | | |
 | JSON export/import with validation | | |

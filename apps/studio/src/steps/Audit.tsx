@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { demoInbox, type DecisionRecord, type LifeDomainId } from "@brad/domain";
+import type { Suggestion } from "@brad/priority-engine";
 import { api } from "../api";
+import { describeSuggestion } from "../suggestions";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/en";
 
@@ -60,6 +62,24 @@ export function Audit({ onError }: { onError: (e: unknown) => void }) {
           agent: agentName(input.agentId),
           capability: t(`capability.${input.capability}` as MessageKey),
         });
+      case "correction": {
+        const item = demoInbox.find((i) => i.id === input.itemId);
+        const subject = item ? `“${item.subject[lang]}”` : String(input.itemId);
+        if (input.action === "apply") {
+          const after = result.after as { tier: string } | null;
+          return t("audit.correctionApply", {
+            change: describeSuggestion(t, { change: input.change, params: input.params, projected: null } as Suggestion),
+            item: subject,
+            tier: after ? t(`tier.${after.tier}` as MessageKey) : "—",
+          });
+        }
+        const suggestion = result.suggestion as Suggestion | null;
+        return t("audit.correctionFeedback", {
+          item: subject,
+          expected: t(`tier.${input.expectedTier}` as MessageKey),
+          suggestion: suggestion ? describeSuggestion(t, suggestion) : t("correction.noSuggestion"),
+        });
+      }
       case "import":
         return t("audit.import", { agents: Number(result.agents ?? 0), grants: Number(result.grants ?? 0) });
     }

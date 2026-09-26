@@ -96,3 +96,4 @@ export function rankItems(items: IncomingItem[], map: LifeMap): RankedItem[] {
         a.item.id.localeCompare(b.item.id),
     );
 }
+export * from "./suggest";

@@ -10,21 +10,37 @@ import {
   type LifeMap,
 } from "@brad/domain";
 import type { PolicyDecision } from "@brad/policy-engine";
-import type { Contribution, RankedItem } from "@brad/priority-engine";
-import { api } from "../api";
+import type { Contribution, RankedItem, Suggestion, Tier } from "@brad/priority-engine";
+import { api, ApiError } from "../api";
+import { describeSuggestion } from "../suggestions";
 import { useI18n } from "../i18n";
+import type { MessageKey } from "../i18n/en";
 
 interface Props {
   lifeMap: LifeMap;
   agents: AgentDefinition[];
   onError: (e: unknown) => void;
+  onLifeMapChanged: (map: LifeMap) => void;
+  onEditLifeMap: () => void;
 }
 
-export function Simulation({ lifeMap, agents, onError }: Props) {
+interface CorrectionState {
+  correctionId: number;
+  current: { score: number; tier: Tier };
+  suggestion: Suggestion | null;
+  applied: boolean;
+}
+
+const TIERS: Tier[] = ["now", "today", "later"];
+
+export function Simulation({ lifeMap, agents, onError, onLifeMapChanged, onEditLifeMap }: Props) {
   const { t, lang } = useI18n();
   const [ranked, setRanked] = useState<RankedItem[] | null>(null);
   const [decisionId, setDecisionId] = useState<number | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [corrections, setCorrections] = useState<Record<string, CorrectionState>>({});
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
 
   const tz = lifeMap.boundaries.timeZone;
   const locale = lang === "pt" ? "pt-BR" : "en-GB";
@@ -41,14 +57,39 @@ export function Simulation({ lifeMap, agents, onError }: Props) {
     return t(`rule.${c.rule}`, params);
   };
 
-  const run = async () => {
+  const run = async (keepOpen?: string) => {
     try {
       const res = await api.simulatePriority();
       setRanked(res.ranked);
       setDecisionId(res.decisionId);
-      setOpen(res.ranked[0]?.item.id ?? null);
+      setOpen(keepOpen ?? res.ranked[0]?.item.id ?? null);
     } catch (e) {
       onError(e);
+    }
+  };
+
+  const correct = async (itemId: string, expected: Tier) => {
+    if (decisionId === null) return;
+    try {
+      const res = await api.correct(decisionId, itemId, expected, notes[itemId] ?? "");
+      setCorrections((c) => ({ ...c, [itemId]: { ...res, applied: false } }));
+      setCorrectionError(null);
+    } catch (e) {
+      setCorrectionError(e instanceof ApiError ? t(`correctionError.${e.message}` as MessageKey) : String(e));
+    }
+  };
+
+  const apply = async (itemId: string) => {
+    const state = corrections[itemId];
+    if (!state) return;
+    try {
+      const res = await api.applyCorrection(state.correctionId);
+      onLifeMapChanged(res.lifeMap);
+      setCorrections((c) => ({ ...c, [itemId]: { ...state, applied: true } }));
+      setCorrectionError(null);
+      await run(itemId);
+    } catch (e) {
+      setCorrectionError(e instanceof ApiError ? t(`correctionError.${e.message}` as MessageKey) : String(e));
     }
   };
 
@@ -57,7 +98,7 @@ export function Simulation({ lifeMap, agents, onError }: Props) {
       <h2>{t("sim.title")}</h2>
       <p className="muted">{t("sim.intro")}</p>
       <div className="actions left">
-        <button className="primary" onClick={run} data-testid="run-simulation">
+        <button className="primary" onClick={() => run()} data-testid="run-simulation">
           {t("sim.run")}
         </button>
         <span className="muted small">{t("sim.clock", { time: formatTime(demoNow), tz })}</span>
@@ -98,6 +139,16 @@ export function Simulation({ lifeMap, agents, onError }: Props) {
                         </li>
                       ))}
                     </ul>
+                    <CorrectionPanel
+                      tier={r.tier}
+                      note={notes[r.item.id] ?? ""}
+                      state={corrections[r.item.id]}
+                      error={correctionError}
+                      onNote={(value) => setNotes((n) => ({ ...n, [r.item.id]: value }))}
+                      onCorrect={(tier) => correct(r.item.id, tier)}
+                      onApply={() => apply(r.item.id)}
+                      onEditLifeMap={onEditLifeMap}
+                    />
                   </div>
                 )}
               </li>
@@ -109,6 +160,84 @@ export function Simulation({ lifeMap, agents, onError }: Props) {
 
       <PolicyPanel agents={agents} onError={onError} />
     </section>
+  );
+}
+
+interface CorrectionPanelProps {
+  tier: Tier;
+  note: string;
+  state: CorrectionState | undefined;
+  error: string | null;
+  onNote: (value: string) => void;
+  onCorrect: (tier: Tier) => void;
+  onApply: () => void;
+  onEditLifeMap: () => void;
+}
+
+function CorrectionPanel({ tier, note, state, error, onNote, onCorrect, onApply, onEditLifeMap }: CorrectionPanelProps) {
+  const { t } = useI18n();
+  const s = state?.suggestion;
+  return (
+    <div className="correction" data-testid="correction">
+      <div className="correction-row">
+        <span className="small">{t("correction.shouldBe")}</span>
+        {TIERS.map((x) => (
+          <button
+            key={x}
+            className="small-btn"
+            disabled={x === tier}
+            onClick={() => onCorrect(x)}
+            data-testid={`should-be-${x}`}
+          >
+            {t(`tier.${x}`)}
+          </button>
+        ))}
+        <input
+          className="note"
+          value={note}
+          maxLength={500}
+          placeholder={t("correction.notePlaceholder")}
+          onChange={(e) => onNote(e.target.value)}
+        />
+      </div>
+      {error && <p className="notice">{error}</p>}
+      {state && (
+        <div className="suggestion" data-testid="suggestion">
+          {!s ? (
+            <p>{t("correction.noSuggestion")}</p>
+          ) : (
+            <>
+              <p>
+                <strong>{t("correction.suggestion")}</strong> {describeSuggestion(t, s)}
+              </p>
+              {s.projected ? (
+                <p className="muted small">
+                  {t("correction.projection", {
+                    from: state.current.score,
+                    to: s.projected.score,
+                    fromTier: t(`tier.${state.current.tier}`),
+                    toTier: t(`tier.${s.projected.tier}`),
+                  })}
+                </p>
+              ) : (
+                <p className="muted small">{t("correction.manual")}</p>
+              )}
+              {state.applied ? (
+                <p className="applied">✓ {t("correction.applied")}</p>
+              ) : s.projected ? (
+                <button className="primary small-btn" onClick={onApply} data-testid="apply-suggestion">
+                  {t("correction.apply")}
+                </button>
+              ) : (
+                <button className="small-btn" onClick={onEditLifeMap}>
+                  {t("correction.openLifeMap")}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

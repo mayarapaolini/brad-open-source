@@ -23,7 +23,14 @@ import {
   type LifeMap,
 } from "@brad/domain";
 import { evaluate, type ActionRequest } from "@brad/policy-engine";
-import { rankItems } from "@brad/priority-engine";
+import {
+  applyAdjustment,
+  rankItems,
+  suggestAdjustment,
+  type RankedItem,
+  type Suggestion,
+  type Tier,
+} from "@brad/priority-engine";
 import type { Store } from "./store";
 
 const MAX_BODY_BYTES = 1_000_000;
@@ -81,6 +88,35 @@ function currentTime(value: unknown): string {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+const TIERS: readonly Tier[] = ["now", "today", "later"];
+const MAX_NOTE_LENGTH = 500;
+
+interface CorrectionInput {
+  action: "feedback";
+  decisionId: number;
+  itemId: string;
+  recordedTier: Tier;
+  expectedTier: Tier;
+  note: string;
+}
+
+/** Re-ranks the items of a stored priority decision against the current life map. */
+function rerank(store: Store, decisionId: number, itemId: string): { map: LifeMap; ranked: RankedItem } {
+  const decision = store.getDecision(decisionId);
+  if (!decision) throw new HttpError(404, "decision_not_found");
+  if (decision.kind !== "priority") throw new HttpError(400, "not_a_priority_decision");
+  const input = decision.input as { itemIds?: string[]; items?: IncomingItem[] };
+  // Older records only kept ids; those always came from the demo inbox.
+  const items = input.items ?? demoInbox.filter((i) => input.itemIds?.includes(i.id));
+  const map = requireLifeMap(store);
+  const ranked = rankItems(items, map).find((r) => r.item.id === itemId);
+  if (!ranked) throw new HttpError(400, "item_not_in_decision");
+  return { map, ranked };
+}
+
+function sameSuggestion(a: Suggestion | null, b: Suggestion | null): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 const MAX_GRANT_DAYS = 365;
 
 function parseActionRequest(input: unknown): ActionRequest {
@@ -229,9 +265,10 @@ const routes: Record<string, Handler> = {
     const body = (await readJson(req)) as { items?: IncomingItem[] };
     const items = Array.isArray(body.items) ? body.items : demoInbox;
     const ranked = rankItems(items, map);
+    // Keep the items themselves (synthetic today) so a later correction can re-rank them.
     const decision = store.addDecision(
       "priority",
-      { itemIds: items.map((i) => i.id) },
+      { itemIds: items.map((i) => i.id), items },
       { order: ranked.map((r) => ({ id: r.item.id, score: r.score, tier: r.tier })) },
     );
     return { ranked, decisionId: decision.id };
@@ -267,6 +304,58 @@ const routes: Record<string, Handler> = {
     const decision = evaluate(request, { agents, grants, boundaries: map.boundaries, now });
     const record = store.addDecision("policy", { request, assumeState: body.assumeState ?? null, assumeGrant: !!body.assumeGrant, now }, decision);
     return { decision, decisionId: record.id };
+  },
+
+  "POST /api/corrections": async (req, store) => {
+    const body = (await readJson(req)) as { decisionId?: number; itemId?: string; expectedTier?: Tier; note?: string };
+    if (!Number.isInteger(body.decisionId) || typeof body.itemId !== "string") throw new HttpError(400, "invalid_request");
+    if (!TIERS.includes(body.expectedTier as Tier)) throw new HttpError(400, "unknown_tier");
+    const note = typeof body.note === "string" ? body.note.trim() : "";
+    if (note.length > MAX_NOTE_LENGTH) throw new HttpError(400, "note_too_long");
+
+    const decision = store.getDecision(body.decisionId!);
+    const recorded = (decision?.result as { order?: { id: string; tier: Tier }[] } | undefined)?.order?.find(
+      (o) => o.id === body.itemId,
+    );
+    const { map, ranked } = rerank(store, body.decisionId!, body.itemId);
+    const recordedTier = recorded?.tier ?? ranked.tier;
+    if (body.expectedTier === ranked.tier) throw new HttpError(400, "same_tier");
+
+    const suggestion = suggestAdjustment(ranked, body.expectedTier!, map);
+    const input: CorrectionInput = {
+      action: "feedback",
+      decisionId: body.decisionId!,
+      itemId: body.itemId,
+      recordedTier,
+      expectedTier: body.expectedTier!,
+      note,
+    };
+    const record = store.addDecision("correction", input, { current: { score: ranked.score, tier: ranked.tier }, suggestion });
+    return { correctionId: record.id, current: { score: ranked.score, tier: ranked.tier }, suggestion };
+  },
+
+  "POST /api/corrections/apply": async (req, store) => {
+    const body = (await readJson(req)) as { correctionId?: number };
+    const record = Number.isInteger(body.correctionId) ? store.getDecision(body.correctionId!) : null;
+    const input = record?.input as CorrectionInput | undefined;
+    if (!record || record.kind !== "correction" || input?.action !== "feedback") throw new HttpError(404, "correction_not_found");
+    const stored = (record.result as { suggestion: Suggestion | null }).suggestion;
+    if (!stored) throw new HttpError(409, "no_suggestion");
+    if (stored.change === "add_person") throw new HttpError(409, "manual_change");
+
+    // Only apply what the owner saw: if the life map moved on, the suggestion is stale.
+    const { map, ranked } = rerank(store, input.decisionId, input.itemId);
+    const fresh = suggestAdjustment(ranked, input.expectedTier, map);
+    if (!sameSuggestion(fresh, stored)) throw new HttpError(409, "stale_correction");
+
+    const next = applyAdjustment(map, stored);
+    store.saveLifeMap(next);
+    store.addDecision(
+      "correction",
+      { action: "apply", correctionId: record.id, itemId: input.itemId, change: stored.change, params: stored.params },
+      { before: { score: ranked.score, tier: ranked.tier }, after: stored.projected },
+    );
+    return { lifeMap: store.getLifeMap(), suggestion: stored };
   },
 
   "GET /api/decisions": (_req, store) => ({ decisions: store.listDecisions() }),
