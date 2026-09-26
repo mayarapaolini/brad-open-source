@@ -137,3 +137,18 @@ export const demoGrants: ConsentGrant[] = [
     revokedAt: null,
   },
 ];
+
+/**
+ * The demo grants shifted so they are meaningful at `now`: two current grants and one
+ * that expired a month ago. Used when the demo is loaded into a running Studio.
+ */
+export function demoGrantsAt(now: string): ConsentGrant[] {
+  const t = Date.parse(now);
+  const day = 24 * 60 * 60 * 1000;
+  const at = (offsetDays: number) => new Date(t + offsetDays * day).toISOString();
+  return demoGrants.map((g) =>
+    g.id === "g-work-read"
+      ? { ...g, issuedAt: at(-60), expiresAt: at(-30) }
+      : { ...g, issuedAt: at(-9), expiresAt: at(300) },
+  );
+}

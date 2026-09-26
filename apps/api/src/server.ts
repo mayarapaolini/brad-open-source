@@ -1,16 +1,23 @@
+import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
-import { generateDraftAgents } from "@brad/agent-factory";
+import { generateDraftAgents, reconcileAgents } from "@brad/agent-factory";
 import {
   AGENT_STATES,
   CAPABILITIES,
   LIFE_DOMAINS,
-  demoGrants,
+  EXPORT_FORMAT,
+  checkTransition,
+  demoGrantsAt,
   demoInbox,
   demoLifeMap,
+  isGrantValid,
+  validateExport,
   validateLifeMap,
   type AgentState,
+  type BradExport,
+  type Capability,
   type ConsentGrant,
   type IncomingItem,
   type LifeMap,
@@ -69,6 +76,13 @@ function requireLifeMap(store: Store): LifeMap {
   return map;
 }
 
+function currentTime(value: unknown): string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value)) ? value : new Date().toISOString();
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+const MAX_GRANT_DAYS = 365;
+
 function parseActionRequest(input: unknown): ActionRequest {
   const r = input as Partial<ActionRequest> | undefined;
   if (
@@ -100,13 +114,110 @@ const routes: Record<string, Handler> = {
     store.reset();
     store.saveLifeMap(demoLifeMap);
     store.replaceAgents(generateDraftAgents(demoLifeMap));
-    store.replaceGrants(demoGrants);
+    store.replaceGrants(demoGrantsAt(new Date().toISOString()));
     return { lifeMap: store.getLifeMap(), agents: store.getAgents() };
   },
 
   "POST /api/agents/generate": (_req, store) => {
-    store.replaceAgents(generateDraftAgents(requireLifeMap(store)));
-    return { agents: store.getAgents() };
+    const { agents, reset, archived } = reconcileAgents(store.getAgents(), generateDraftAgents(requireLifeMap(store)));
+    store.replaceAgents(agents);
+
+    // Grants never outlive the need for them: revoke what an agent no longer requests.
+    const now = new Date().toISOString();
+    const byId = new Map(agents.map((a) => [a.id, a]));
+    for (const grant of store.getGrants()) {
+      const agent = byId.get(grant.agentId);
+      const stillNeeded = agent && agent.state !== "archived" && agent.requestedCapabilities.includes(grant.capability);
+      if (!stillNeeded && grant.revokedAt === null) {
+        store.saveGrant({ ...grant, revokedAt: now });
+        store.addDecision("grant", { action: "revoke", grantId: grant.id, agentId: grant.agentId, capability: grant.capability, cause: "regenerate" }, { ok: true });
+      }
+    }
+    if (reset.length > 0 || archived.length > 0) store.addDecision("lifecycle", { action: "regenerate" }, { reset, archived });
+    return { agents: store.getAgents(), grants: store.getGrants(), reset, archived };
+  },
+
+  "POST /api/agents/transition": async (req, store) => {
+    const body = (await readJson(req)) as { agentId?: string; to?: AgentState; now?: string };
+    const agent = store.getAgents().find((a) => a.id === body.agentId);
+    if (!agent) throw new HttpError(404, "agent_not_found");
+    if (!AGENT_STATES.includes(body.to as AgentState)) throw new HttpError(400, "unknown_state");
+    const to = body.to as AgentState;
+    const now = currentTime(body.now);
+    const check = checkTransition(agent, to, {
+      grants: store.getGrants(),
+      hasSimulation: store.hasPolicySimulation(agent.id),
+      now,
+    });
+    const next = check.ok ? { ...agent, state: to } : agent;
+    if (check.ok) store.saveAgent(next);
+    store.addDecision("lifecycle", { agentId: agent.id, from: agent.state, to }, check);
+    return { result: check, agent: next };
+  },
+
+  "POST /api/grants": async (req, store) => {
+    const body = (await readJson(req)) as { agentId?: string; capability?: Capability; days?: number; now?: string };
+    const map = requireLifeMap(store);
+    const agent = store.getAgents().find((a) => a.id === body.agentId);
+    if (!agent) throw new HttpError(404, "agent_not_found");
+    if (agent.state === "archived") throw new HttpError(409, "agent_archived");
+    const capability = body.capability as Capability;
+    if (!CAPABILITIES.includes(capability)) throw new HttpError(400, "unknown_capability");
+    if (map.boundaries.forbiddenCapabilities.includes(capability)) throw new HttpError(409, "capability_forbidden");
+    if (!agent.requestedCapabilities.includes(capability)) throw new HttpError(409, "capability_not_requested");
+    const days = body.days ?? 30;
+    if (!Number.isInteger(days) || days < 1 || days > MAX_GRANT_DAYS) throw new HttpError(400, "invalid_duration");
+    const now = currentTime(body.now);
+    if (store.getGrants().some((g) => g.agentId === agent.id && g.capability === capability && isGrantValid(g, now))) {
+      throw new HttpError(409, "grant_exists");
+    }
+    const grant: ConsentGrant = {
+      id: `g-${randomUUID()}`,
+      agentId: agent.id,
+      capability,
+      purpose: agent.goal || agent.domain,
+      issuedAt: now,
+      expiresAt: new Date(Date.parse(now) + days * DAY).toISOString(),
+      revokedAt: null,
+    };
+    store.saveGrant(grant);
+    store.addDecision("grant", { action: "grant", grantId: grant.id, agentId: agent.id, capability, expiresAt: grant.expiresAt }, { ok: true });
+    return { grant };
+  },
+
+  "POST /api/grants/revoke": async (req, store) => {
+    const body = (await readJson(req)) as { grantId?: string; now?: string };
+    const grant = store.getGrants().find((g) => g.id === body.grantId);
+    if (!grant) throw new HttpError(404, "grant_not_found");
+    if (grant.revokedAt !== null) return { grant };
+    const revoked = { ...grant, revokedAt: currentTime(body.now) };
+    store.saveGrant(revoked);
+    store.addDecision("grant", { action: "revoke", grantId: grant.id, agentId: grant.agentId, capability: grant.capability }, { ok: true });
+    return { grant: revoked };
+  },
+
+  "GET /api/export": (_req, store) => {
+    const snapshot: BradExport = {
+      format: EXPORT_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      lifeMap: requireLifeMap(store),
+      agents: store.getAgents(),
+      grants: store.getGrants(),
+    };
+    return snapshot;
+  },
+
+  "POST /api/import": async (req, store) => {
+    const body = await readJson(req);
+    const errors = validateExport(body);
+    if (errors.length > 0) throw new HttpError(400, "invalid_export", errors);
+    const data = body as BradExport;
+    // An imported agent never starts acting on its own: active agents arrive paused.
+    const agents = data.agents.map((a) => (a.state === "active" ? { ...a, state: "paused" as const } : a));
+    store.replaceAll(data.lifeMap, agents, data.grants);
+    store.addDecision("import", { exportedAt: data.exportedAt }, { agents: agents.length, grants: data.grants.length });
+    return { lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants() };
   },
 
   "GET /api/agents": (_req, store) => ({ agents: store.getAgents(), grants: store.getGrants() }),
@@ -133,7 +244,7 @@ const routes: Record<string, Handler> = {
     if (body.assumeState !== undefined && !AGENT_STATES.includes(body.assumeState)) {
       throw new HttpError(400, "assumeState is not a known agent state");
     }
-    const now = typeof body.now === "string" && !Number.isNaN(Date.parse(body.now)) ? body.now : new Date().toISOString();
+    const now = currentTime(body.now);
 
     // What-if overrides live only in this request; stored agents stay drafts.
     const agents = store

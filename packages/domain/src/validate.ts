@@ -1,7 +1,10 @@
 import {
+  AGENT_STATES,
   CAPABILITIES,
   LIFE_DOMAINS,
   RELATIONSHIPS,
+  type AgentDefinition,
+  type ConsentGrant,
   type LifeMap,
 } from "./types";
 
@@ -90,4 +93,41 @@ export function emptyLifeMap(): LifeMap {
       sensitiveDomains: ["health", "finances"],
     },
   };
+}
+
+const REASONS = ["importance", "gap", "importance_and_gap"];
+
+function isCapabilityList(value: unknown): boolean {
+  return Array.isArray(value) && value.every((c) => CAPABILITIES.includes(c));
+}
+
+export function validateAgent(input: unknown, path = "agent"): string[] {
+  const a = input as Partial<AgentDefinition> | null;
+  if (typeof a !== "object" || a === null) return [`${path} must be an object`];
+  const errors: string[] = [];
+  if (typeof a.id !== "string" || a.id === "") errors.push(`${path}.id is required`);
+  if (!LIFE_DOMAINS.includes(a.domain as never)) errors.push(`${path}.domain is unknown`);
+  if (!AGENT_STATES.includes(a.state as never)) errors.push(`${path}.state is unknown`);
+  if (typeof a.goal !== "string") errors.push(`${path}.goal must be a string`);
+  if (!REASONS.includes(a.reason as string)) errors.push(`${path}.reason is unknown`);
+  if (!isCapabilityList(a.requestedCapabilities)) errors.push(`${path}.requestedCapabilities is invalid`);
+  if (!isCapabilityList(a.excludedByBoundary)) errors.push(`${path}.excludedByBoundary is invalid`);
+  if (a.escalation !== "ask_owner") errors.push(`${path}.escalation must be "ask_owner"`);
+  return errors;
+}
+
+export function validateGrant(input: unknown, path = "grant"): string[] {
+  const g = input as Partial<ConsentGrant> | null;
+  if (typeof g !== "object" || g === null) return [`${path} must be an object`];
+  const errors: string[] = [];
+  for (const key of ["id", "agentId", "purpose", "issuedAt", "expiresAt"] as const) {
+    if (typeof g[key] !== "string" || g[key] === "") errors.push(`${path}.${key} is required`);
+  }
+  if (!CAPABILITIES.includes(g.capability as never)) errors.push(`${path}.capability is unknown`);
+  for (const key of ["issuedAt", "expiresAt"] as const) {
+    if (typeof g[key] === "string" && Number.isNaN(Date.parse(g[key]))) errors.push(`${path}.${key} is not a date`);
+  }
+  if (g.revokedAt !== null && (typeof g.revokedAt !== "string" || Number.isNaN(Date.parse(g.revokedAt))))
+    errors.push(`${path}.revokedAt must be null or a date`);
+  return errors;
 }

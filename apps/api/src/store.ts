@@ -79,6 +79,10 @@ export class Store {
     });
   }
 
+  saveAgent(agent: AgentDefinition): void {
+    this.db.prepare("UPDATE agents SET body = ? WHERE id = ?").run(JSON.stringify(agent), agent.id);
+  }
+
   getGrants(): ConsentGrant[] {
     const rows = this.db.prepare("SELECT body FROM grants ORDER BY id").all() as { body: string }[];
     return rows.map((r) => JSON.parse(r.body) as ConsentGrant);
@@ -89,6 +93,37 @@ export class Store {
       this.db.exec("DELETE FROM grants");
       const insert = this.db.prepare("INSERT INTO grants (id, agent_id, body) VALUES (?, ?, ?)");
       for (const g of grants) insert.run(g.id, g.agentId, JSON.stringify(g));
+    });
+  }
+
+  saveGrant(grant: ConsentGrant): void {
+    this.db
+      .prepare(
+        "INSERT INTO grants (id, agent_id, body) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET body = excluded.body",
+      )
+      .run(grant.id, grant.agentId, JSON.stringify(grant));
+  }
+
+  /** True when the owner has run at least one policy simulation for this agent. */
+  hasPolicySimulation(agentId: string): boolean {
+    const row = this.db
+      .prepare(
+        "SELECT 1 AS hit FROM decisions WHERE kind = 'policy' AND json_extract(input, '$.request.agentId') = ? LIMIT 1",
+      )
+      .get(agentId);
+    return row !== undefined;
+  }
+
+  /** Replaces the life map, agents and grants in one transaction; decision history is kept. */
+  replaceAll(map: LifeMap, agents: AgentDefinition[], grants: ConsentGrant[]): void {
+    this.transaction(() => {
+      this.saveLifeMap(map);
+      this.db.exec("DELETE FROM agents");
+      const insertAgent = this.db.prepare("INSERT INTO agents (id, position, body) VALUES (?, ?, ?)");
+      agents.forEach((a, i) => insertAgent.run(a.id, i, JSON.stringify(a)));
+      this.db.exec("DELETE FROM grants");
+      const insertGrant = this.db.prepare("INSERT INTO grants (id, agent_id, body) VALUES (?, ?, ?)");
+      for (const g of grants) insertGrant.run(g.id, g.agentId, JSON.stringify(g));
     });
   }
 
