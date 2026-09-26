@@ -1,5 +1,6 @@
 import {
   CONSEQUENTIAL_CAPABILITIES,
+  isGrantValid,
   type AgentDefinition,
   type AgentState,
   type Boundaries,
@@ -70,7 +71,9 @@ export function evaluate(request: ActionRequest, ctx: PolicyContext): PolicyDeci
   const trace: TraceStep[] = [];
   const agent = ctx.agents.find((a) => a.id === request.agentId);
   const now = Date.parse(ctx.now);
-  const grant = ctx.grants.find((g) => g.agentId === request.agentId && g.capability === request.capability);
+  // Prefer a currently valid grant, so an old revoked one never hides a new one.
+  const matching = ctx.grants.filter((g) => g.agentId === request.agentId && g.capability === request.capability);
+  const grant = matching.find((g) => isGrantValid(g, ctx.now)) ?? matching.at(-1);
 
   type StepResult = Omit<TraceStep, "rule">;
   const checks: Record<PolicyRule, () => StepResult> = {

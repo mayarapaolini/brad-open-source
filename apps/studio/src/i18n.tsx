@@ -44,7 +44,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const t = useCallback(
     (key: MessageKey, params: Params = {}) =>
-      dictionaries[lang][key].replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`)),
+      // Unknown keys (e.g. from stored records) fall back to the key itself.
+      (dictionaries[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`)),
     [lang],
   );
 

@@ -59,3 +59,42 @@ export function generateDraftAgents(map: LifeMap): AgentDefinition[] {
     )
     .map((c) => c.agent);
 }
+
+export interface ReconcileResult {
+  agents: AgentDefinition[];
+  /** Agents whose requested capabilities changed and were sent back for review. */
+  reset: string[];
+  /** Agents the life map no longer justifies. */
+  archived: string[];
+}
+
+function sameCapabilities(a: Capability[], b: Capability[]): boolean {
+  return a.length === b.length && a.every((c) => b.includes(c));
+}
+
+/**
+ * Regenerating agents must not erase the owner's decisions. Existing agents keep their
+ * state; if what they need changed, anything past "configured" goes back to "configured"
+ * for review. Agents the new life map no longer proposes are archived, never deleted.
+ */
+export function reconcileAgents(existing: AgentDefinition[], proposed: AgentDefinition[]): ReconcileResult {
+  const reset: string[] = [];
+  const archived: string[] = [];
+  const byId = new Map(existing.map((a) => [a.id, a]));
+
+  const agents = proposed.map((next) => {
+    const prev = byId.get(next.id);
+    if (!prev || prev.state === "archived" || prev.state === "draft") return next;
+    const changed = !sameCapabilities(prev.requestedCapabilities, next.requestedCapabilities);
+    if (changed && prev.state !== "configured") reset.push(next.id);
+    return { ...next, state: changed ? "configured" : prev.state };
+  });
+
+  const proposedIds = new Set(proposed.map((a) => a.id));
+  for (const prev of existing) {
+    if (proposedIds.has(prev.id)) continue;
+    if (prev.state !== "archived") archived.push(prev.id);
+    agents.push({ ...prev, state: "archived" });
+  }
+  return { agents, reset, archived };
+}

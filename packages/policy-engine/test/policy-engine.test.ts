@@ -87,3 +87,16 @@ describe("policy engine", () => {
     expect(decision.trace.slice(1).every((s) => s.status === "skipped")).toBe(true);
   });
 });
+
+describe("grant selection", () => {
+  it("uses a new valid grant even when an older revoked one exists", () => {
+    const revoked = { ...demoGrants[0]!, id: "g-old", revokedAt: "2026-03-02T10:00:00-03:00" };
+    const fresh = { ...demoGrants[0]!, id: "g-new", issuedAt: "2026-03-05T10:00:00-03:00" };
+    const decision = evaluate(
+      { agentId: "agent-family", capability: "draft_reply", domain: "family" },
+      context({ grants: [revoked, fresh] }, ["agent-family"]),
+    );
+    expect(decision.outcome).toBe("allow");
+    expect(decision.trace.find((s) => s.rule === "grant_present")?.params.grantId).toBe("g-new");
+  });
+});

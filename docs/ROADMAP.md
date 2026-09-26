@@ -13,7 +13,7 @@
 - [x] local persistence (SQLite)
 - [ ] encryption at rest
 - [x] synthetic demo profile
-- [ ] safe import/export
+- [x] safe import/export (validated JSON; imported active agents arrive paused)
 
 ## Milestone 2 — Agent portfolio
 
@@ -25,9 +25,9 @@
 
 ## Milestone 3 — Brad Multiple Agents panel
 
-- agent overview and lifecycle
-- permission center
-- run timeline and audit trail
+- [x] agent overview and lifecycle
+- [x] permission center (grant, expiry, revoke)
+- [x] decision history (audit trail); run timeline pending
 - global and per-agent pause
 - connection health
 
