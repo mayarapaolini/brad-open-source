@@ -48,14 +48,16 @@ export function generateDraftAgents(map: LifeMap): AgentDefinition[] {
       requestedCapabilities: wanted.filter((c) => !forbidden.has(c)),
       excludedByBoundary: wanted.filter((c) => forbidden.has(c)),
       escalation: "ask_owner",
+      origin: "generated",
+      revision: 0,
     };
-    return [{ agent, weight: a.importance + Math.max(0, gap) }];
+    return [{ agent, domain: a.domain, weight: a.importance + Math.max(0, gap) }];
   });
 
   return candidates
     .sort(
       (x, y) =>
-        y.weight - x.weight || LIFE_DOMAINS.indexOf(x.agent.domain) - LIFE_DOMAINS.indexOf(y.agent.domain),
+        y.weight - x.weight || LIFE_DOMAINS.indexOf(x.domain) - LIFE_DOMAINS.indexOf(y.domain),
     )
     .map((c) => c.agent);
 }
@@ -80,21 +82,31 @@ function sameCapabilities(a: Capability[], b: Capability[]): boolean {
 export function reconcileAgents(existing: AgentDefinition[], proposed: AgentDefinition[]): ReconcileResult {
   const reset: string[] = [];
   const archived: string[] = [];
-  const byId = new Map(existing.map((a) => [a.id, a]));
+  // Imported agents (e.g. from Inkus) belong to the owner, not to the life-map generator.
+  const imported = existing.filter((a) => (a.origin ?? "generated") !== "generated");
+  const generated = existing.filter((a) => (a.origin ?? "generated") === "generated");
+  const byId = new Map(generated.map((a) => [a.id, a]));
 
   const agents = proposed.map((next) => {
     const prev = byId.get(next.id);
-    if (!prev || prev.state === "archived" || prev.state === "draft") return next;
+    if (!prev) return next;
     const changed = !sameCapabilities(prev.requestedCapabilities, next.requestedCapabilities);
+    // Keep the Inkus link and count the change as a local edit, so the next sync pushes it.
+    const kept = {
+      ...next,
+      inkus: prev.inkus,
+      revision: (prev.revision ?? 0) + (changed || prev.goal !== next.goal ? 1 : 0),
+    };
+    if (prev.state === "archived" || prev.state === "draft") return kept;
     if (changed && prev.state !== "configured") reset.push(next.id);
-    return { ...next, state: changed ? "configured" : prev.state };
+    return { ...kept, state: changed ? "configured" : prev.state };
   });
 
   const proposedIds = new Set(proposed.map((a) => a.id));
-  for (const prev of existing) {
+  for (const prev of generated) {
     if (proposedIds.has(prev.id)) continue;
     if (prev.state !== "archived") archived.push(prev.id);
     agents.push({ ...prev, state: "archived" });
   }
-  return { agents, reset, archived };
+  return { agents: [...agents, ...imported], reset, archived };
 }

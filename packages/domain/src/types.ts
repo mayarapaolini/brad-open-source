@@ -109,20 +109,42 @@ export const AGENT_STATES = [
 
 export type AgentState = (typeof AGENT_STATES)[number];
 
-export type AgentReason = "importance" | "gap" | "importance_and_gap";
+export type AgentReason = "importance" | "gap" | "importance_and_gap" | "imported";
+
+export interface InkusLink {
+  actorId: string;
+  specId: string;
+  specVersion: number;
+  syncedAt: string;
+  /** Local revision that matches the Inkus spec; a higher `revision` means unpushed local edits. */
+  syncedRevision: number;
+  /** Spec fields Brad does not model, kept so a push never erases them in Inkus. */
+  passthrough: Record<string, unknown>;
+}
 
 export interface AgentDefinition {
   id: string;
-  domain: LifeDomainId;
+  /** Display name. Generated agents may leave it empty and are named after their domain. */
+  name?: string;
+  /** Primary life domain, or null for a cross-cutting agent (e.g. an orchestrator). */
+  domain: LifeDomainId | null;
+  /** Cross-cutting agents may only act in these domains. Ignored when `domain` is set. */
+  actionDomains?: LifeDomainId[];
   state: AgentState;
-  /** Owner goal the agent serves, copied from the life map. */
+  /** Owner goal or mission the agent serves. */
   goal: string;
+  responsibilities?: string[];
   reason: AgentReason;
   /** Capabilities the agent would need. Requested is never granted. */
   requestedCapabilities: Capability[];
   /** Capabilities the template wanted but the owner's boundaries forbid. */
   excludedByBoundary: Capability[];
   escalation: "ask_owner";
+  /** Where the agent came from. Missing means "generated" (older records). */
+  origin?: "generated" | "inkus";
+  /** Increases on every local content edit. */
+  revision?: number;
+  inkus?: InkusLink;
 }
 
 export interface ConsentGrant {
@@ -150,7 +172,7 @@ export interface IncomingItem {
 
 export interface DecisionRecord {
   id: number;
-  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction";
+  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction" | "sync";
   createdAt: string;
   input: unknown;
   result: unknown;

@@ -100,3 +100,32 @@ describe("grant selection", () => {
     expect(decision.trace.find((s) => s.rule === "grant_present")?.params.grantId).toBe("g-new");
   });
 });
+
+describe("cross-cutting agents", () => {
+  const orchestrator: AgentDefinition = {
+    id: "inkus-orchestrator",
+    name: "Orchestrator",
+    domain: null,
+    state: "approved",
+    goal: "Balance priorities",
+    reason: "imported",
+    requestedCapabilities: ["read_calendar"],
+    excludedByBoundary: [],
+    escalation: "ask_owner",
+    origin: "inkus",
+  };
+  const grant = { ...demoGrants[0]!, id: "g-orch", agentId: orchestrator.id, capability: "read_calendar" as const };
+  const request = { agentId: orchestrator.id, capability: "read_calendar" as const, domain: "work" as const };
+
+  it("are denied everywhere until the owner lists domains for them", () => {
+    const decision = evaluate(request, context({ agents: [orchestrator], grants: [grant] }));
+    expect(decision).toMatchObject({ outcome: "deny", decidedBy: "domain_scope" });
+    expect(decision.trace.find((s) => s.rule === "domain_scope")?.params.agentDomain).toBe("cross_cutting");
+  });
+
+  it("may act only in the listed domains", () => {
+    const listed = { ...orchestrator, actionDomains: ["work" as const] };
+    expect(evaluate(request, context({ agents: [listed], grants: [grant] })).outcome).toBe("allow");
+    expect(evaluate({ ...request, domain: "family" }, context({ agents: [listed], grants: [grant] })).outcome).toBe("deny");
+  });
+});
