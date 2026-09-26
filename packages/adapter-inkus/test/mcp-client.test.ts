@@ -94,7 +94,7 @@ describe("MCP Inkus client", () => {
         now: "2026-03-10T08:30:00-03:00",
         displayName: (a) => a.name ?? a.id,
       });
-      expect(first.report.imported).toHaveLength(4);
+      expect(first.report.imported).toHaveLength(4); // the deprecated legacy agent is skipped
       expect(first.report.errors).toEqual([]);
 
       const orchestrator = first.agents.find((a) => a.name === "Demo Life Orchestrator")!;

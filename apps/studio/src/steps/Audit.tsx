@@ -90,12 +90,14 @@ export function Audit({ onError, agents }: { onError: (e: unknown) => void; agen
         });
       }
       case "sync": {
-        const report = result as { imported?: string[]; updated?: string[]; pushed?: string[]; created?: string[]; overwritten?: unknown[]; errors?: unknown[] };
+        if (input.action === "export") return t("audit.inkusExport", { agent: agentName(input.agentId) });
+        const report = result as Record<string, unknown[] | undefined>;
         return t("audit.sync", {
           imported: report.imported?.length ?? 0,
+          adopted: report.adopted?.length ?? 0,
           updated: report.updated?.length ?? 0,
+          retired: report.retired?.length ?? 0,
           pushed: report.pushed?.length ?? 0,
-          created: report.created?.length ?? 0,
           overwritten: report.overwritten?.length ?? 0,
           errors: report.errors?.length ?? 0,
         });

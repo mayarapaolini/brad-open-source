@@ -251,7 +251,7 @@ export const pt: Record<MessageKey, string> = {
   "inkus.disabled": "A sincronização com o Inkus está desligada. Defina BRAD_ADAPTER_INKUS_ENABLED, BRAD_INKUS_MCP_URL e BRAD_INKUS_TOKEN para ativá-la.",
   "inkus.sync": "Sincronizar com o Inkus",
   "inkus.syncing": "Sincronizando…",
-  "inkus.report": "Última sincronização: {imported} importados, {updated} atualizados pelo Inkus, {pushed} enviados, {created} criados no Inkus",
+  "inkus.report": "Última sincronização: {imported} importados, {adopted} vinculados, {updated} atualizados pelo Inkus, {retired} aposentados, {pushed} enviados",
   "inkus.overwritten": "{count} edições locais substituídas pelo Inkus",
   "inkus.errors": "{count} erros (veja a auditoria)",
   "inkusError.adapter_disabled": "O adaptador do Inkus está desligado.",
@@ -259,7 +259,12 @@ export const pt: Record<MessageKey, string> = {
   "inkusError.inkus_sync_failed": "A sincronização falhou; nada foi alterado localmente.",
 
   "audit.edit": "{agent} editado: {fields}",
-  "audit.sync": "Sincronização com o Inkus: {imported} importados, {updated} atualizados, {pushed} enviados, {created} criados, {overwritten} edições locais substituídas, {errors} erros",
+  "audit.sync": "Sincronização com o Inkus: {imported} importados, {adopted} vinculados, {updated} atualizados, {retired} aposentados, {pushed} enviados, {overwritten} edições locais substituídas, {errors} erros",
+  "audit.inkusExport": "{agent} criado no Inkus",
+  "agents.exportInkus": "Criar no Inkus",
+  "inkusError.already_linked": "Este agente já está vinculado ao Inkus.",
+  "inkusError.agent_archived": "Agentes arquivados não podem ser exportados.",
+  "inkusError.agent_not_found": "Este agente não existe mais.",
   "audit.kind.sync": "sincronização",
 
   "domain.family": "Família",

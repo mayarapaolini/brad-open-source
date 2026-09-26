@@ -44,17 +44,28 @@ describe("Inkus sync API", () => {
     });
   });
 
-  it("imports Inkus agents and exports Brad's generated agents in one sync", async () => {
+  it("imports Inkus agents and links Brad agents of the same domain, without creating anything in Inkus", async () => {
+    const actorsBefore = fake.actors.length;
     const { status, json } = await call("POST", "/api/adapters/inkus/sync");
     expect(status).toBe(200);
-    expect(json.report.imported).toHaveLength(4);
-    expect(json.report.created).toHaveLength(6);
-    // Brad's agents now exist in Inkus with Brad's namespace on an active spec.
-    const family = fake.actors.find((a) => a.name === "Brad Family")!;
-    const spec = await fake.getActiveSpec(family.id);
-    expect(spec?.status).toBe("active");
-    expect((spec?.capabilities as { brad: { domain: string } }).brad.domain).toBe("family");
+    // Demo profile agents for family and health are linked to their Inkus twins; the cross-cutting ones are imported.
+    expect(json.report.adopted.sort()).toEqual(["agent-family", "agent-health"]);
+    expect(json.report.imported).toHaveLength(2);
+    expect(fake.actors.length).toBe(actorsBefore);
     expect((await call("GET", "/api/adapters/inkus")).json.lastSync.kind).toBe("sync");
+  });
+
+  it("creates an Inkus agent only on explicit export", async () => {
+    const res = await call("POST", "/api/adapters/inkus/export", { agentId: "agent-work" });
+    expect(res.status).toBe(200);
+    const actor = fake.actors.find((a) => a.id === res.json.agent.inkus.actorId)!;
+    expect(actor.name).toBe("Brad Work");
+    const spec = await fake.getActiveSpec(actor.id);
+    expect((spec?.capabilities as { brad: { domain: string } }).brad.domain).toBe("work");
+    expect(await call("POST", "/api/adapters/inkus/export", { agentId: "agent-work" })).toMatchObject({
+      status: 409,
+      json: { error: "already_linked" },
+    });
   });
 
   it("round-trips edits in both directions", async () => {

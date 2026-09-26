@@ -51,7 +51,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 
 ## Optional adapters (not required)
 
-- **Inkus:** two-way sync of agent definitions. Edit an agent in Brad or in Inkus and the next sync reconciles it. Grants, lifecycle state, people and history never leave Brad, and an Inkus edit can never grant a capability or activate an agent. Enable with `BRAD_ADAPTER_INKUS_ENABLED=true`, `BRAD_INKUS_MCP_URL` and `BRAD_INKUS_TOKEN`; try it offline with `BRAD_INKUS_FAKE=1`. See [ADR 0003](docs/adr/0003-inkus-editable-mirror.md).
+- **Inkus:** two-way sync of agent definitions. Edit an agent in Brad or in Inkus and the next sync reconciles it; deprecated Inkus versions are never loaded, same-domain agents are linked rather than duplicated, and new Inkus agents are only created on request. Grants, lifecycle state, people and history never leave Brad, and an Inkus edit can never grant a capability or activate an agent. Enable with `BRAD_ADAPTER_INKUS_ENABLED=true`, `BRAD_INKUS_MCP_URL` and `BRAD_INKUS_TOKEN`; try it offline with `BRAD_INKUS_FAKE=1`. See [ADR 0003](docs/adr/0003-inkus-editable-mirror.md).
 - **Obsidian:** would import and export Markdown notes you pick. It never scans a whole vault.
 - **Hermes:** runs agents from their active Inkus spec, so it follows Brad's edits after each sync. Letting Hermes query Brad's policy engine directly is still open.
 

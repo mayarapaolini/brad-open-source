@@ -17,7 +17,9 @@ export class FakeInkus implements InkusClient {
 
   async getActiveSpec(actorId: string): Promise<InkusSpec | null> {
     const versions = this.specs.filter((s) => s.actor_id === actorId).sort((a, b) => b.version - a.version);
-    const spec = versions.find((s) => s.status === "active") ?? versions.find((s) => s.status === "draft") ?? null;
+    // Mirrors the real Inkus: with no active or draft version it returns the latest deprecated one.
+    const spec =
+      versions.find((s) => s.status === "active") ?? versions.find((s) => s.status === "draft") ?? versions[0] ?? null;
     return spec ? structuredClone(spec) : null;
   }
 
@@ -40,6 +42,11 @@ export class FakeInkus implements InkusClient {
     if (!spec) throw new Error(`unknown spec ${specId}`);
     for (const other of this.specs) if (other.actor_id === spec.actor_id && other.status === "active") other.status = "deprecated";
     spec.status = "active";
+  }
+
+  /** Test helper: retire every version of an actor, as a migration in Inkus would. */
+  deprecateAll(actorId: string): void {
+    for (const spec of this.specs) if (spec.actor_id === actorId) spec.status = "deprecated";
   }
 
   /** Test helper: what an edit made directly in Inkus looks like (new active version). */
@@ -84,6 +91,11 @@ export async function seedDemoInkus(fake = new FakeInkus()): Promise<FakeInkus> 
       responsibilities: ["Review requested capabilities"],
     },
   ];
+  // A retired agent: only deprecated versions. Brad must never load it.
+  const legacy = await fake.createActor({ name: "Demo Legacy Writer", description: "Retired agent" });
+  await fake.editInInkus(legacy.id, { mission: "Old mission", knowledge_domains: ["escrita"] });
+  fake.deprecateAll(legacy.id);
+
   for (const seed of seeds) {
     const actor = await fake.createActor({ name: seed.name, description: seed.mission });
     await fake.editInInkus(actor.id, {

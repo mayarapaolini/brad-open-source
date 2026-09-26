@@ -177,14 +177,14 @@ try {
   );
   await capture(page, 2600);
 
-  // Inkus: import its agents, export Brad's, then edit one here and push it back.
+  // Inkus: import its agents (family and health link to Brad's own), then edit one here and push it back.
   await page.getByTestId("step-agents").click();
   await page.getByTestId("inkus-sync").click();
   const syncReport = page.getByTestId("inkus-report");
   await syncReport.waitFor();
   assert(
-    (await syncReport.innerText()).includes("4 imported") && (await syncReport.innerText()).includes("6 created in Inkus"),
-    "one sync imports the Inkus agents and exports Brad's agents",
+    (await syncReport.innerText()).includes("2 imported") && (await syncReport.innerText()).includes("2 linked"),
+    "one sync imports Inkus agents, links same-domain ones and skips deprecated ones",
   );
   const orchestrator = page.locator("article.card.agent").filter({ hasText: "Demo Life Orchestrator" });
   assert(

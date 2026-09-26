@@ -21,7 +21,10 @@ ADR 0002 made the local store the source of truth and treated Inkus as a publish
 
 - **Explicit sync.** A sync runs only when the owner asks, through the button or `POST /api/adapters/inkus/sync`. There is no background polling, in line with "no silent ingestion".
 - **Pull first.** Each `ai` actor's active spec is compared with the version Brad last saw. A newer version is **applied directly** (owner decision): content is replaced and state is kept. If the same agent was also edited in Brad since the last sync, **Inkus wins**, and the replaced fields are listed in the sync record. They are never dropped silently.
-- **Push second.** Local edits create a new spec version in Inkus, which is then activated. Inkus never overwrites versions, so history is kept on both sides. Brad agents Inkus has not seen yet become new `ai` actors. Inkus fields Brad does not model (prompt, model, temperature, knowledge domains…) are carried through unchanged.
+- **Deprecated means history.** A deprecated version is never loaded or run. When there is no active or draft version, Inkus returns the latest deprecated one, and Brad skips it. A linked agent whose versions are all deprecated is archived in Brad and its grants are revoked.
+- **No duplicates.** When an Inkus agent maps to a domain for which Brad already has an unlinked agent, the two are linked; no second copy is imported.
+- **Push second.** Local edits to *linked* agents create a new spec version in Inkus, which is then activated. Inkus never overwrites versions, so history is kept on both sides. Inkus fields Brad does not model (prompt, model, temperature, knowledge domains…) are carried through unchanged.
+- **Creating an Inkus agent is explicit.** A sync never creates actors. The owner uses "Create in Inkus" on a specific agent (`POST /api/adapters/inkus/export`).
 - **Brad's data lives in its own namespace.** Brad reads and writes only `capabilities.brad` (`requested`, `domain`, `actionDomains`, `state`), and ignores other keys when deciding what an agent may do. An agent without that namespace requests nothing.
 - **Safety invariants that hold whatever Inkus says:**
   - An imported agent starts as a `draft` with no grants.

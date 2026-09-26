@@ -154,9 +154,13 @@ function AgentEditor({
   );
 }
 
-function InkusPanel({ onSynced }: { onSynced: () => Promise<void> }) {
+function InkusPanel({ onSynced, onStatus }: { onSynced: () => Promise<void>; onStatus: (enabled: boolean) => void }) {
   const { t } = useI18n();
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabledState] = useState(false);
+  const setEnabled = (value: boolean) => {
+    setEnabledState(value);
+    onStatus(value);
+  };
   const [report, setReport] = useState<SyncReport | null>(null);
   const [lastAt, setLastAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -173,6 +177,7 @@ function InkusPanel({ onSynced }: { onSynced: () => Promise<void> }) {
         }
       })
       .catch(() => setEnabled(false));
+    // Load once; onStatus only mirrors the flag to the parent.
   }, []);
 
   if (!enabled) return <p className="muted small inkus-off">{t("inkus.disabled")}</p>;
@@ -201,9 +206,10 @@ function InkusPanel({ onSynced }: { onSynced: () => Promise<void> }) {
         <span className="small" data-testid="inkus-report">
           {t("inkus.report", {
             imported: report.imported.length,
+            adopted: report.adopted.length,
             updated: report.updated.length,
+            retired: report.retired.length,
             pushed: report.pushed.length,
-            created: report.created.length,
           })}
           {report.overwritten.length > 0 && ` · ${t("inkus.overwritten", { count: report.overwritten.length })}`}
           {report.errors.length > 0 && ` · ${t("inkus.errors", { count: report.errors.length })}`}
@@ -218,6 +224,17 @@ function InkusPanel({ onSynced }: { onSynced: () => Promise<void> }) {
 export function Agents({ agents, grants, forbidden, onGenerate, onChanged, onNext }: Props) {
   const { t } = useI18n();
   const [editing, setEditing] = useState<string | null>(null);
+  const [inkusEnabled, setInkusEnabled] = useState(false);
+
+  const exportToInkus = async (agent: AgentDefinition) => {
+    try {
+      await api.inkusExport(agent.id);
+      note(agent.id, "");
+      await onChanged();
+    } catch (e) {
+      note(agent.id, e instanceof ApiError ? t(`inkusError.${e.message}` as MessageKey) : String(e));
+    }
+  };
   const [notices, setNotices] = useState<Record<string, string>>({});
   const [showArchived, setShowArchived] = useState(false);
   const now = new Date().toISOString();
@@ -271,7 +288,7 @@ export function Agents({ agents, grants, forbidden, onGenerate, onChanged, onNex
         <button className="primary" onClick={onGenerate} data-testid="generate-agents">
           {t("agents.generate")}
         </button>
-        <InkusPanel onSynced={onChanged} />
+        <InkusPanel onSynced={onChanged} onStatus={setInkusEnabled} />
         {archivedCount > 0 && (
           <label className="check">
             <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />{" "}
@@ -372,9 +389,16 @@ export function Agents({ agents, grants, forbidden, onGenerate, onChanged, onNex
                   />
                 ) : (
                   a.state !== "archived" && (
-                    <button className="link edit" onClick={() => setEditing(a.id)} data-testid="edit-agent">
-                      {t("agents.edit")}
-                    </button>
+                    <p className="links">
+                      <button className="link edit" onClick={() => setEditing(a.id)} data-testid="edit-agent">
+                        {t("agents.edit")}
+                      </button>
+                      {inkusEnabled && !a.inkus && (
+                        <button className="link" onClick={() => exportToInkus(a)} data-testid="export-inkus">
+                          {t("agents.exportInkus")}
+                        </button>
+                      )}
+                    </p>
                   )
                 )}
                 {ALLOWED_TRANSITIONS[a.state].length > 0 && (

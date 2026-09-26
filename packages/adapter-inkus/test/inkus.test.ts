@@ -4,6 +4,7 @@ import {
   FakeInkus,
   capabilitiesFromSpec,
   domainFromSpec,
+  exportAgentToInkus,
   seedDemoInkus,
   specFromAgent,
   syncWithInkus,
@@ -22,6 +23,7 @@ describe("mapping", () => {
     expect(domainFromSpec({ knowledge_domains: ["família e cuidado"] })).toBe("family");
     expect(domainFromSpec({ knowledge_domains: ["Saúde física"] })).toBe("health");
     expect(domainFromSpec({ scope: "Domínio principal: finanças pessoais. Atua…" })).toBe("finances");
+    expect(domainFromSpec({ scope: "Domínio family. Objetivo informado…" })).toBe("family");
     expect(domainFromSpec({ knowledge_domains: ["privacidade e governança"] })).toBeNull();
     expect(domainFromSpec({ knowledge_domains: ["família"], capabilities: { brad: { domain: "work" } } })).toBe("work");
     expect(domainFromSpec({ knowledge_domains: ["família"], capabilities: { brad: { domain: null } } })).toBeNull();
@@ -65,10 +67,11 @@ describe("mapping", () => {
 });
 
 describe("syncWithInkus", () => {
-  it("imports every Inkus agent as a draft with no permissions", async () => {
+  it("imports every live Inkus agent as a draft with no permissions, and never a deprecated one", async () => {
     const fake = await seedDemoInkus();
     const { agents, report } = await run(fake, []);
     expect(report.imported).toHaveLength(4);
+    expect(agents.some((a) => a.name === "Demo Legacy Writer")).toBe(false);
     expect(agents.every((a) => a.state === "draft" && a.origin === "inkus" && a.requestedCapabilities.length === 0)).toBe(true);
     const byName = Object.fromEntries(agents.map((a) => [a.name, a]));
     expect(byName["Demo Family"]?.domain).toBe("family");
@@ -77,12 +80,12 @@ describe("syncWithInkus", () => {
     expect(report.pushed).toEqual([]);
   });
 
-  it("pushes local edits as a new active version and creates actors for Brad-only agents", async () => {
+  it("pushes local edits as a new active version, and never creates Inkus agents on its own", async () => {
     const fake = await seedDemoInkus();
     const first = await run(fake, []);
     const family = first.agents.find((a) => a.name === "Demo Family")!;
     const edited: AgentDefinition = { ...family, goal: "Edited in Brad", requestedCapabilities: ["draft_reply"], revision: 1 };
-    const generated: AgentDefinition = {
+    const bradOnly: AgentDefinition = {
       id: "agent-work",
       domain: "work",
       state: "draft",
@@ -94,19 +97,67 @@ describe("syncWithInkus", () => {
       origin: "generated",
       revision: 0,
     };
+    const actorsBefore = fake.actors.length;
     const others = first.agents.filter((a) => a.id !== family.id);
-    const second = await run(fake, [...others, edited, generated]);
+    const second = await run(fake, [...others, edited, bradOnly]);
 
     expect(second.report.pushed).toEqual([family.id]);
-    expect(second.report.created).toEqual(["agent-work"]);
+    expect(fake.actors.length).toBe(actorsBefore);
     const spec = await fake.getActiveSpec(family.inkus!.actorId);
-    expect(spec).toMatchObject({ version: 2, status: "active", mission: "Edited in Brad" });
+    expect(spec).toMatchObject({ status: "active", mission: "Edited in Brad" });
     expect((spec!.capabilities as { brad: { requested: string[] } }).brad.requested).toEqual(["draft_reply"]);
     expect(second.agents.find((a) => a.id === family.id)?.inkus?.syncedRevision).toBe(1);
 
-    // A third sync has nothing to do.
-    const third = await run(fake, second.agents);
-    expect([...third.report.pushed, ...third.report.created, ...third.report.updated]).toEqual([]);
+    // Explicit export creates the actor once.
+    const exported = await exportAgentToInkus(fake, bradOnly, "Brad Work", NOW);
+    expect(fake.actors.length).toBe(actorsBefore + 1);
+    expect(await fake.getActiveSpec(exported.inkus!.actorId)).toMatchObject({ status: "active", mission: "Ship the roadmap" });
+    await expect(exportAgentToInkus(fake, exported, "Brad Work", NOW)).rejects.toThrow("already linked");
+
+    const third = await run(fake, [...second.agents, exported]);
+    expect([...third.report.pushed, ...third.report.updated, ...third.report.imported]).toEqual([]);
+  });
+
+  it("links a Brad agent to the Inkus agent of the same domain instead of duplicating it", async () => {
+    const fake = await seedDemoInkus();
+    const generated: AgentDefinition = {
+      id: "agent-family",
+      domain: "family",
+      state: "approved",
+      goal: "Local goal",
+      reason: "importance",
+      requestedCapabilities: [],
+      excludedByBoundary: [],
+      escalation: "ask_owner",
+      origin: "generated",
+      revision: 0,
+    };
+    const { agents, report } = await run(fake, [generated]);
+    expect(report.adopted).toEqual(["agent-family"]);
+    expect(report.imported).toHaveLength(3);
+    const family = agents.find((a) => a.id === "agent-family")!;
+    expect(family).toMatchObject({ state: "approved", goal: "Coordinate family routines and school events.", origin: "generated" });
+    expect(family.inkus?.actorId).toBe(fake.actors.find((a) => a.name === "Demo Family")!.id);
+  });
+
+  it("retires agents whose Inkus versions were all deprecated, revoking their grants", async () => {
+    const fake = await seedDemoInkus();
+    const first = await run(fake, []);
+    const health = first.agents.find((a) => a.name === "Demo Physical Health")!;
+    const grant: ConsentGrant = {
+      id: "g-h",
+      agentId: health.id,
+      capability: "read_calendar",
+      purpose: "test",
+      issuedAt: NOW,
+      expiresAt: "2026-12-31T00:00:00Z",
+      revokedAt: null,
+    };
+    fake.deprecateAll(health.inkus!.actorId);
+    const { agents, report, revokeGrantIds } = await run(fake, first.agents, { grants: [grant] });
+    expect(report.retired).toEqual([health.id]);
+    expect(agents.find((a) => a.id === health.id)?.state).toBe("archived");
+    expect(revokeGrantIds).toEqual(["g-h"]);
   });
 
   it("applies Inkus edits directly, keeps local state, and reports overwritten local edits", async () => {
@@ -161,7 +212,7 @@ describe("syncWithInkus", () => {
       get(target, prop, receiver) {
         if (prop === "getActiveSpec")
           return async (id: string) => {
-            if (id === target.actors[0]!.id) throw new Error("boom");
+            if (id === target.actors.find((a) => a.name === "Demo Family")!.id) throw new Error("boom");
             return target.getActiveSpec(id);
           };
         return Reflect.get(target, prop, receiver);
@@ -169,6 +220,7 @@ describe("syncWithInkus", () => {
     });
     const { report } = await run(broken, []);
     expect(report.imported).toHaveLength(3);
-    expect(report.errors).toEqual([{ agentId: `inkus-${fake.actors[0]!.id}`, message: "boom" }]);
+    const family = fake.actors.find((a) => a.name === "Demo Family")!;
+    expect(report.errors).toEqual([{ agentId: `inkus-${family.id}`, message: "boom" }]);
   });
 });

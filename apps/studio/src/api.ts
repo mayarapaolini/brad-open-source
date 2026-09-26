@@ -69,6 +69,7 @@ export const api = {
       "POST",
       "/api/adapters/inkus/sync",
     ),
+  inkusExport: (agentId: string) => call<{ agent: AgentDefinition }>("POST", "/api/adapters/inkus/export", { agentId }),
   getDecisions: () => call<{ decisions: DecisionRecord[] }>("GET", "/api/decisions"),
   reset: () => call<{ ok: true }>("DELETE", "/api/data"),
 };

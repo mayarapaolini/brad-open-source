@@ -61,7 +61,8 @@ export function domainFromSpec(spec: InkusSpecFields): LifeDomainId | null {
     const fromLabel = labelToDomain(first);
     if (fromLabel) return fromLabel;
   }
-  const principal = /dom[ií]nio principal:\s*([^.]+)/i.exec(spec.scope ?? "");
+  // "Domínio principal: família e cuidado." or "Domínio family."
+  const principal = /dom[ií]nio(?:\s+principal)?:?\s*([^.]+)/i.exec(spec.scope ?? "");
   return principal?.[1] ? labelToDomain(principal[1]) : null;
 }
 

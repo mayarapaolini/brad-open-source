@@ -249,7 +249,7 @@ export const en = {
   "inkus.disabled": "Inkus sync is off. Set BRAD_ADAPTER_INKUS_ENABLED, BRAD_INKUS_MCP_URL and BRAD_INKUS_TOKEN to enable it.",
   "inkus.sync": "Sync with Inkus",
   "inkus.syncing": "Syncing…",
-  "inkus.report": "Last sync: {imported} imported, {updated} updated from Inkus, {pushed} pushed, {created} created in Inkus",
+  "inkus.report": "Last sync: {imported} imported, {adopted} linked, {updated} updated from Inkus, {retired} retired, {pushed} pushed",
   "inkus.overwritten": "{count} local edits replaced by Inkus",
   "inkus.errors": "{count} errors (see audit)",
   "inkusError.adapter_disabled": "The Inkus adapter is disabled.",
@@ -257,7 +257,12 @@ export const en = {
   "inkusError.inkus_sync_failed": "The sync failed; nothing was changed locally.",
 
   "audit.edit": "{agent} edited: {fields}",
-  "audit.sync": "Inkus sync: {imported} imported, {updated} updated, {pushed} pushed, {created} created, {overwritten} local edits replaced, {errors} errors",
+  "audit.sync": "Inkus sync: {imported} imported, {adopted} linked, {updated} updated, {retired} retired, {pushed} pushed, {overwritten} local edits replaced, {errors} errors",
+  "audit.inkusExport": "{agent} created in Inkus",
+  "agents.exportInkus": "Create in Inkus",
+  "inkusError.already_linked": "This agent is already linked to Inkus.",
+  "inkusError.agent_archived": "Archived agents cannot be exported.",
+  "inkusError.agent_not_found": "This agent no longer exists.",
   "audit.kind.sync": "sync",
 
   "domain.family": "Family",

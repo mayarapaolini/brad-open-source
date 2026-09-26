@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
-import { syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
+import { exportAgentToInkus, syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
 import { generateDraftAgents, reconcileAgents } from "@brad/agent-factory";
 import {
   AGENT_STATES,
@@ -464,9 +464,34 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     return { agent: next, grants: store.getGrants() };
   },
 
+  "POST /api/adapters/inkus/export": async (req, store) => {
+    if (!options.inkus) throw new HttpError(409, "adapter_disabled");
+    const body = (await readJson(req)) as { agentId?: string };
+    const agent = store.getAgents().find((a) => a.id === body.agentId);
+    if (!agent) throw new HttpError(404, "agent_not_found");
+    if (agent.inkus) throw new HttpError(409, "already_linked");
+    if (agent.state === "archived") throw new HttpError(409, "agent_archived");
+    let client: InkusClient & { close?: () => Promise<void> };
+    try {
+      client = await options.inkus();
+    } catch (error) {
+      throw new HttpError(502, "inkus_unreachable", [error instanceof Error ? error.message : String(error)]);
+    }
+    try {
+      const linked = await exportAgentToInkus(client, agent, displayName(agent), new Date().toISOString());
+      store.saveAgent(linked);
+      store.addDecision("sync", { source: "inkus", action: "export", agentId: agent.id }, { created: [agent.id], actorId: linked.inkus?.actorId });
+      return { agent: linked };
+    } catch (error) {
+      throw new HttpError(502, "inkus_sync_failed", [error instanceof Error ? error.message : String(error)]);
+    } finally {
+      await client.close?.();
+    }
+  },
+
   "GET /api/adapters/inkus": (_req, store) => ({
     enabled: Boolean(options.inkus),
-    lastSync: store.listDecisions(200).find((d) => d.kind === "sync") ?? null,
+    lastSync: store.listDecisions(200).find((d) => d.kind === "sync" && (d.input as { action?: string }).action !== "export") ?? null,
   }),
 
   "POST /api/adapters/inkus/sync": async (_req, store) => {
