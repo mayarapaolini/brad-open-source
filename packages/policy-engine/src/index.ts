@@ -44,7 +44,7 @@ export interface TraceStep {
 export interface PolicyDecision {
   outcome: Outcome;
   /** The rule that settled the outcome. */
-  decidedBy: PolicyRule | "default_allow";
+  decidedBy: PolicyRule | "all_rules_passed";
   trace: TraceStep[];
 }
 
@@ -127,5 +127,5 @@ export function evaluate(request: ActionRequest, ctx: PolicyContext): PolicyDeci
 
   if (denial) return { outcome: "deny", decidedBy: denial, trace };
   if (flag) return { outcome: "confirm", decidedBy: flag, trace };
-  return { outcome: "allow", decidedBy: "default_allow", trace };
+  return { outcome: "allow", decidedBy: "all_rules_passed", trace };
 }

@@ -17,7 +17,7 @@ describe("policy engine", () => {
       context({}, ["agent-family"]),
     );
     expect(decision.outcome).toBe("allow");
-    expect(decision.decidedBy).toBe("default_allow");
+    expect(decision.decidedBy).toBe("all_rules_passed");
   });
 
   it("denies by default when there is no grant", () => {

@@ -95,7 +95,7 @@ export const en = {
   "policyReason.grant_valid": "The grant is no longer valid ({reason}).",
   "policyReason.sensitive_domain": "{domain} is a sensitive area, so Brad asks you first.",
   "policyReason.consequential_action": "“{capability}” has an effect outside Brad, so Brad asks you first.",
-  "policyReason.default_allow": "Every rule passed.",
+  "policyReason.all_rules_passed": "Every rule passed.",
 
   "status.pass": "pass",
   "status.fail": "fail",
@@ -125,7 +125,7 @@ export const en = {
   "policyRule.grant_valid": "Grant is current (not expired or revoked)",
   "policyRule.sensitive_domain": "Area is not marked sensitive",
   "policyRule.consequential_action": "Action has no external effect",
-  "policyRule.default_allow": "All rules passed",
+  "policyRule.all_rules_passed": "All rules passed",
 
   "app.export": "Export",
   "app.import": "Import",

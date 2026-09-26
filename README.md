@@ -2,7 +2,7 @@
 
 **Brad is a local-first control plane that transforms a person's priorities, relationships and constraints into a governed portfolio of AI agents.**
 
-> **Status:** open-source architecture and specification for a personal multi-agent system, with its first MVP in development. The vertical slice below runs today. Nothing connects to real inboxes, calendars or external services yet.
+> **Status:** functional local MVP. The diagnostic, life map, agent generation, lifecycle, permission grants, policy simulation, correction loop, audit and import/export run today. External adapters and real-world inbox/calendar integrations are not implemented yet.
 
 ![Brad Studio demo: diagnostic, draft agents, explained prioritisation, policy decisions, governance and audit](docs/assets/demo.gif)
 

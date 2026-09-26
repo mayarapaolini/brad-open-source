@@ -97,7 +97,7 @@ export const pt: Record<MessageKey, string> = {
   "policyReason.grant_valid": "A concessão não é mais válida ({reason}).",
   "policyReason.sensitive_domain": "{domain} é uma área sensível, então o Brad pergunta antes.",
   "policyReason.consequential_action": "“{capability}” tem efeito fora do Brad, então o Brad pergunta antes.",
-  "policyReason.default_allow": "Todas as regras passaram.",
+  "policyReason.all_rules_passed": "Todas as regras passaram.",
 
   "status.pass": "ok",
   "status.fail": "falhou",
@@ -127,7 +127,7 @@ export const pt: Record<MessageKey, string> = {
   "policyRule.grant_valid": "Concessão vigente (não expirada nem revogada)",
   "policyRule.sensitive_domain": "Área não marcada como sensível",
   "policyRule.consequential_action": "Ação sem efeito externo",
-  "policyRule.default_allow": "Todas as regras passaram",
+  "policyRule.all_rules_passed": "Todas as regras passaram",
 
   "app.export": "Exportar",
   "app.import": "Importar",
