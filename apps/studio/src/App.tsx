@@ -207,7 +207,19 @@ export function App() {
             onNext={() => setStep("simulation")}
           />
         )}
-        {step === "simulation" && <Simulation key={epoch} lifeMap={lifeMap} agents={agents.filter((a) => a.state !== "archived")} onError={report} />}
+        {step === "simulation" && (
+          <Simulation
+            key={epoch}
+            lifeMap={lifeMap}
+            agents={agents.filter((a) => a.state !== "archived")}
+            onError={report}
+            onLifeMapChanged={(map) => {
+              setLifeMap(map);
+              setDirty(false);
+            }}
+            onEditLifeMap={() => setStep("lifeMap")}
+          />
+        )}
         {step === "audit" && <Audit key={epoch} onError={report} />}
       </main>
     </div>

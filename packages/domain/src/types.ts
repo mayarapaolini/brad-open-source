@@ -150,7 +150,7 @@ export interface IncomingItem {
 
 export interface DecisionRecord {
   id: number;
-  kind: "priority" | "policy" | "lifecycle" | "grant" | "import";
+  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction";
   createdAt: string;
   input: unknown;
   result: unknown;

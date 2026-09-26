@@ -88,6 +88,24 @@ try {
   assert((await first.innerText()).includes("Sam Rivera is your partner"), "the ranking explains why");
   await capture(page, 3200);
 
+  // Correction loop: the manager's late email should be "Now".
+  const manager = page.getByTestId("ranked-item").filter({ hasText: "Q2 deck" });
+  await manager.locator(".item-head").click();
+  await manager.getByTestId("should-be-now").click();
+  const suggestion = manager.getByTestId("suggestion");
+  await suggestion.waitFor();
+  const suggestionText = await suggestion.innerText();
+  assert(
+    suggestionText.includes("Let Jordan Blake interrupt quiet hours") && suggestionText.includes("61 → 86"),
+    "marking an item as misranked suggests one change and shows its effect",
+  );
+  await manager.scrollIntoViewIfNeeded();
+  await capture(page, 3000);
+  await manager.getByTestId("apply-suggestion").click();
+  await manager.locator(".applied").waitFor();
+  assert((await manager.locator(".badge.tier").innerText()) === "Now", "applying the suggestion moves the item to Now");
+  await capture(page, 2400);
+
   await page.getByTestId("evaluate-policy").click();
   await page.getByTestId("policy-decision").waitFor();
   assert((await page.getByTestId("policy-decision").innerText()).includes("Denied"), "a draft agent cannot send messages");
@@ -145,8 +163,10 @@ try {
   await page.getByTestId("audit-item").first().waitFor();
   const audit = await page.getByTestId("audit-list").innerText();
   assert(
-    audit.includes("Family agent: approved → active") && audit.includes("Revoked Family agent's permission to draft replies"),
-    "the audit history records lifecycle and permission changes",
+    audit.includes("Family agent: approved → active") &&
+      audit.includes("Revoked Family agent's permission to draft replies") &&
+      audit.includes("Applied: Let Jordan Blake interrupt quiet hours"),
+    "the audit history records corrections, lifecycle and permission changes",
   );
   await capture(page, 2600);
 

@@ -21,7 +21,7 @@
 - [x] people and priority mapping
 - [x] explainable priority engine
 - [x] deterministic policy engine with what-if simulation
-- [ ] correction loop (owner feedback on decisions)
+- [x] correction loop (owner feedback → one suggested, previewed life-map change)
 
 ## Milestone 3 — Brad Multiple Agents panel
 

@@ -9,7 +9,7 @@ import type {
   TransitionCheck,
 } from "@brad/domain";
 import type { ActionRequest, PolicyDecision } from "@brad/policy-engine";
-import type { RankedItem } from "@brad/priority-engine";
+import type { RankedItem, Suggestion, Tier } from "@brad/priority-engine";
 
 export class ApiError extends Error {
   constructor(
@@ -52,6 +52,14 @@ export const api = {
   simulatePriority: () => call<{ ranked: RankedItem[]; decisionId: number }>("POST", "/api/simulate/priority"),
   simulatePolicy: (body: { request: ActionRequest; assumeState?: AgentState; assumeGrant?: boolean; now?: string }) =>
     call<{ decision: PolicyDecision; decisionId: number }>("POST", "/api/simulate/policy", body),
+  correct: (decisionId: number, itemId: string, expectedTier: Tier, note: string) =>
+    call<{ correctionId: number; current: { score: number; tier: Tier }; suggestion: Suggestion | null }>(
+      "POST",
+      "/api/corrections",
+      { decisionId, itemId, expectedTier, note },
+    ),
+  applyCorrection: (correctionId: number) =>
+    call<{ lifeMap: LifeMap; suggestion: Suggestion }>("POST", "/api/corrections/apply", { correctionId }),
   getDecisions: () => call<{ decisions: DecisionRecord[] }>("GET", "/api/decisions"),
   reset: () => call<{ ok: true }>("DELETE", "/api/data"),
 };

@@ -135,6 +135,20 @@ export class Store {
     return { id: Number(info.lastInsertRowid), kind, createdAt, input, result };
   }
 
+  getDecision(id: number): DecisionRecord | null {
+    const row = this.db
+      .prepare("SELECT id, kind, created_at, input, result FROM decisions WHERE id = ?")
+      .get(id) as { id: number; kind: DecisionRecord["kind"]; created_at: string; input: string; result: string } | undefined;
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      kind: row.kind,
+      createdAt: row.created_at,
+      input: JSON.parse(row.input),
+      result: JSON.parse(row.result),
+    };
+  }
+
   listDecisions(limit = 50): DecisionRecord[] {
     const rows = this.db
       .prepare("SELECT id, kind, created_at, input, result FROM decisions ORDER BY id DESC LIMIT ?")
