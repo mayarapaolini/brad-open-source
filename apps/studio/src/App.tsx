@@ -202,6 +202,7 @@ export function App() {
           <Agents
             agents={agents}
             grants={grants}
+            forbidden={lifeMap.boundaries.forbiddenCapabilities}
             onGenerate={generate}
             onChanged={refreshAgents}
             onNext={() => setStep("simulation")}
@@ -220,7 +221,7 @@ export function App() {
             onEditLifeMap={() => setStep("lifeMap")}
           />
         )}
-        {step === "audit" && <Audit key={epoch} onError={report} />}
+        {step === "audit" && <Audit key={epoch} onError={report} agents={agents} />}
       </main>
     </div>
   );

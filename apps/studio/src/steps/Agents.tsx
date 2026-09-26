@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ALLOWED_TRANSITIONS,
+  CAPABILITIES,
+  LIFE_DOMAINS,
+  type LifeDomainId,
   isGrantValid,
   type AgentDefinition,
   type AgentState,
@@ -10,17 +13,228 @@ import {
 import { api, ApiError } from "../api";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/en";
+import { agentLabel } from "../agentLabel";
+import type { SyncReport } from "@brad/adapter-inkus";
 
 interface Props {
   agents: AgentDefinition[];
   grants: ConsentGrant[];
+  forbidden: Capability[];
   onGenerate: () => void;
   onChanged: () => Promise<void>;
   onNext: () => void;
 }
 
-export function Agents({ agents, grants, onGenerate, onChanged, onNext }: Props) {
+interface Draft {
+  name: string;
+  goal: string;
+  responsibilities: string;
+  domain: LifeDomainId | "";
+  actionDomains: LifeDomainId[];
+  requestedCapabilities: Capability[];
+}
+
+function toDraft(a: AgentDefinition): Draft {
+  return {
+    name: a.name ?? "",
+    goal: a.goal,
+    responsibilities: (a.responsibilities ?? []).join("\n"),
+    domain: a.domain ?? "",
+    actionDomains: a.actionDomains ?? [],
+    requestedCapabilities: [...a.requestedCapabilities, ...a.excludedByBoundary],
+  };
+}
+
+function toggle<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
+function AgentEditor({
+  agent,
+  forbidden,
+  onCancel,
+  onSaved,
+}: {
+  agent: AgentDefinition;
+  forbidden: Capability[];
+  onCancel: () => void;
+  onSaved: (error?: string) => void;
+}) {
   const { t } = useI18n();
+  const [draft, setDraft] = useState<Draft>(() => toDraft(agent));
+  const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+
+  const save = async () => {
+    try {
+      await api.updateAgent(agent.id, {
+        name: draft.name,
+        goal: draft.goal,
+        responsibilities: draft.responsibilities.split("\n"),
+        domain: draft.domain || null,
+        actionDomains: draft.actionDomains,
+        requestedCapabilities: draft.requestedCapabilities,
+      });
+      onSaved();
+    } catch (e) {
+      onSaved(e instanceof ApiError ? t(`editError.${e.message}` as MessageKey) : String(e));
+    }
+  };
+
+  return (
+    <div className="editor" data-testid="agent-editor">
+      <label className="field">
+        {t("editor.name")}
+        <input value={draft.name} maxLength={120} onChange={(e) => set({ name: e.target.value })} data-testid="edit-name" />
+      </label>
+      <label className="field">
+        {t("editor.goal")}
+        <textarea rows={2} value={draft.goal} onChange={(e) => set({ goal: e.target.value })} data-testid="edit-goal" />
+      </label>
+      <label className="field">
+        {t("editor.responsibilities")}
+        <textarea rows={3} value={draft.responsibilities} onChange={(e) => set({ responsibilities: e.target.value })} />
+      </label>
+      <label className="field">
+        {t("editor.domain")}
+        <select
+          value={draft.domain}
+          onChange={(e) => set({ domain: e.target.value as LifeDomainId | "" })}
+          data-testid="edit-domain"
+        >
+          <option value="">{t("agents.crossCutting")}</option>
+          {LIFE_DOMAINS.map((d) => (
+            <option key={d} value={d}>
+              {t(`domain.${d}`)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {draft.domain === "" && (
+        <fieldset>
+          <legend>{t("editor.actionDomains")}</legend>
+          {LIFE_DOMAINS.map((d) => (
+            <label key={d} className="check">
+              <input
+                type="checkbox"
+                checked={draft.actionDomains.includes(d)}
+                onChange={() => set({ actionDomains: toggle(draft.actionDomains, d) })}
+                data-testid={`edit-action-${d}`}
+              />{" "}
+              {t(`domain.${d}`)}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      <fieldset>
+        <legend>{t("editor.capabilities")}</legend>
+        {CAPABILITIES.map((c) => (
+          <label key={c} className="check">
+            <input
+              type="checkbox"
+              disabled={forbidden.includes(c)}
+              checked={draft.requestedCapabilities.includes(c) && !forbidden.includes(c)}
+              onChange={() => set({ requestedCapabilities: toggle(draft.requestedCapabilities, c) })}
+              data-testid={`edit-cap-${c}`}
+            />{" "}
+            {t(`capability.${c}`)}
+            {forbidden.includes(c) && <span className="muted small"> · {t("editor.forbidden")}</span>}
+          </label>
+        ))}
+      </fieldset>
+      <p className="muted small">{t("editor.note")}</p>
+      <div className="lifecycle">
+        <button className="primary small-btn" onClick={save} data-testid="edit-save">
+          {t("common.save")}
+        </button>
+        <button className="ghost small-btn" onClick={onCancel}>
+          {t("editor.cancel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InkusPanel({ onSynced, onStatus }: { onSynced: () => Promise<void>; onStatus: (enabled: boolean) => void }) {
+  const { t } = useI18n();
+  const [enabled, setEnabledState] = useState(false);
+  const setEnabled = (value: boolean) => {
+    setEnabledState(value);
+    onStatus(value);
+  };
+  const [report, setReport] = useState<SyncReport | null>(null);
+  const [lastAt, setLastAt] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .inkusStatus()
+      .then((s) => {
+        setEnabled(s.enabled);
+        if (s.lastSync) {
+          setReport(s.lastSync.result as SyncReport);
+          setLastAt(s.lastSync.createdAt);
+        }
+      })
+      .catch(() => setEnabled(false));
+    // Load once; onStatus only mirrors the flag to the parent.
+  }, []);
+
+  if (!enabled) return <p className="muted small inkus-off">{t("inkus.disabled")}</p>;
+
+  const sync = async () => {
+    setBusy(true);
+    try {
+      const res = await api.inkusSync();
+      setReport(res.report);
+      setLastAt(new Date().toISOString());
+      setError(null);
+      await onSynced();
+    } catch (e) {
+      setError(e instanceof ApiError ? [t(`inkusError.${e.message}` as MessageKey), ...(e.details ?? [])].join(" · ") : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="inkus" data-testid="inkus-panel">
+      <button onClick={sync} disabled={busy} data-testid="inkus-sync">
+        {busy ? t("inkus.syncing") : t("inkus.sync")}
+      </button>
+      {report && (
+        <span className="small" data-testid="inkus-report">
+          {t("inkus.report", {
+            imported: report.imported.length,
+            adopted: report.adopted.length,
+            updated: report.updated.length,
+            retired: report.retired.length,
+            pushed: report.pushed.length,
+          })}
+          {report.overwritten.length > 0 && ` · ${t("inkus.overwritten", { count: report.overwritten.length })}`}
+          {report.errors.length > 0 && ` · ${t("inkus.errors", { count: report.errors.length })}`}
+          {lastAt && <span className="muted"> · {new Date(lastAt).toLocaleString()}</span>}
+        </span>
+      )}
+      {error && <p className="notice">{error}</p>}
+    </div>
+  );
+}
+
+export function Agents({ agents, grants, forbidden, onGenerate, onChanged, onNext }: Props) {
+  const { t } = useI18n();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [inkusEnabled, setInkusEnabled] = useState(false);
+
+  const exportToInkus = async (agent: AgentDefinition) => {
+    try {
+      await api.inkusExport(agent.id);
+      note(agent.id, "");
+      await onChanged();
+    } catch (e) {
+      note(agent.id, e instanceof ApiError ? t(`inkusError.${e.message}` as MessageKey) : String(e));
+    }
+  };
   const [notices, setNotices] = useState<Record<string, string>>({});
   const [showArchived, setShowArchived] = useState(false);
   const now = new Date().toISOString();
@@ -74,6 +288,7 @@ export function Agents({ agents, grants, onGenerate, onChanged, onNext }: Props)
         <button className="primary" onClick={onGenerate} data-testid="generate-agents">
           {t("agents.generate")}
         </button>
+        <InkusPanel onSynced={onChanged} onStatus={setInkusEnabled} />
         {archivedCount > 0 && (
           <label className="check">
             <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />{" "}
@@ -88,17 +303,39 @@ export function Agents({ agents, grants, onGenerate, onChanged, onNext }: Props)
           {visible.map((a) => {
             const agentGrants = grants.filter((g) => g.agentId === a.id);
             return (
-              <article key={a.id} className={`card agent state-${a.state}`} data-testid={`agent-${a.domain}`}>
+              <article key={a.id} className={`card agent state-${a.state}`} data-testid={`agent-${a.id}`}>
                 <header>
-                  <h3>{t("agents.name", { domain: t(`domain.${a.domain}`) })}</h3>
+                  <h3>{agentLabel(t, a)}</h3>
                   <span className={`badge state-${a.state}`} data-testid="agent-state">
                     {t(`state.${a.state}`)}
                   </span>
                 </header>
-                <p className="muted small">{t(`reason.${a.reason}`)}</p>
+                <p className="muted small tags">
+                  {a.origin === "inkus" && <span className="badge origin-inkus">Inkus</span>}
+                  {a.inkus && a.origin !== "inkus" && <span className="badge origin-synced">{t("agents.inInkus")}</span>}
+                  {a.domain ? t(`domain.${a.domain}`) : t("agents.crossCutting")} · {t(`reason.${a.reason}`)}
+                  {a.inkus && (a.revision ?? 0) > a.inkus.syncedRevision && (
+                    <span className="badge unsynced"> {t("agents.unsynced")}</span>
+                  )}
+                </p>
+                {!a.domain && (
+                  <p className="small">
+                    {t("agents.actsIn")}{" "}
+                    {(a.actionDomains ?? []).length > 0
+                      ? (a.actionDomains ?? []).map((d) => t(`domain.${d}`)).join(", ")
+                      : t("agents.actsNowhere")}
+                  </p>
+                )}
                 <p>
                   <strong>{t("agents.goal")}:</strong> {a.goal || <em className="muted">{t("agents.noGoal")}</em>}
                 </p>
+                {(a.responsibilities ?? []).length > 0 && (
+                  <ul className="responsibilities small">
+                    {(a.responsibilities ?? []).map((r) => (
+                      <li key={r}>{r}</li>
+                    ))}
+                  </ul>
+                )}
 
                 <p className="small">{t("agents.permissions")}</p>
                 <ul className="grants">
@@ -138,6 +375,32 @@ export function Agents({ agents, grants, onGenerate, onChanged, onNext }: Props)
                   </>
                 )}
 
+                {editing === a.id ? (
+                  <AgentEditor
+                    agent={a}
+                    forbidden={forbidden}
+                    onCancel={() => setEditing(null)}
+                    onSaved={async (error) => {
+                      if (error) return note(a.id, error);
+                      setEditing(null);
+                      note(a.id, "");
+                      await onChanged();
+                    }}
+                  />
+                ) : (
+                  a.state !== "archived" && (
+                    <p className="links">
+                      <button className="link edit" onClick={() => setEditing(a.id)} data-testid="edit-agent">
+                        {t("agents.edit")}
+                      </button>
+                      {inkusEnabled && !a.inkus && (
+                        <button className="link" onClick={() => exportToInkus(a)} data-testid="export-inkus">
+                          {t("agents.exportInkus")}
+                        </button>
+                      )}
+                    </p>
+                  )
+                )}
                 {ALLOWED_TRANSITIONS[a.state].length > 0 && (
                   <div className="lifecycle">
                     {ALLOWED_TRANSITIONS[a.state].map((to) => (

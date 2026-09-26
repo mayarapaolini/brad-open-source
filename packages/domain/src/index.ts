@@ -3,4 +3,5 @@ export * from "./validate";
 export * from "./time";
 export * from "./demo";
 export * from "./lifecycle";
+export * from "./agent";
 export * from "./export";

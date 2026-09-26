@@ -2,7 +2,7 @@
 
 **Brad is a local-first control plane that transforms a person's priorities, relationships and constraints into a governed portfolio of AI agents.**
 
-> **Status:** functional local MVP. The diagnostic, life map, agent generation, lifecycle, permission grants, policy simulation, correction loop, audit and import/export run today. External adapters and real-world inbox/calendar integrations are not implemented yet.
+> **Status:** functional local MVP. The diagnostic, life map, agent generation, lifecycle, permission grants, policy simulation, correction loop, audit and import/export run today. Two-way Inkus sync is implemented and tested against a synthetic Inkus; the connection to a real Inkus workspace is not verified yet. Other adapters and real-world inbox/calendar integrations are not implemented.
 
 ![Brad Studio demo: diagnostic, draft agents, explained prioritisation, policy decisions, governance and audit](docs/assets/demo.gif)
 
@@ -34,7 +34,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 | Works today | In development | Planned |
 | --- | --- | --- |
 | Local Studio (EN/PT) | CLI for validation and migrations | Encryption at rest for the local store |
-| Wheel of Life diagnostic | | Optional adapters: Inkus, Obsidian, Hermes |
+| Wheel of Life diagnostic | Inkus two-way sync: implemented and tested with a synthetic Inkus; real-workspace verification pending | Obsidian adapter |
 | Editable life map: goals, people, boundaries | | Real inbox and calendar connectors |
 | Draft agent generation (no grants) | | Narrow, confirm-first automation recipes |
 | Agent lifecycle with enforced requirements | | Threat model and security review |
@@ -49,11 +49,11 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 | Unit tests for permission, denial, lifecycle and prioritisation, plus a browser end-to-end test | | |
 | CI: lint, typecheck, tests, build, e2e | | |
 
-## Optional adapters (not required, not implemented yet)
+## Optional adapters (not required)
 
-- **Inkus:** would publish approved agent definitions and documentation. It never receives credentials or the full profile.
+- **Inkus:** two-way sync of agent definitions. Edit an agent in Brad or in Inkus and the next sync reconciles it; deprecated Inkus versions are never loaded, same-domain agents are linked rather than duplicated, and new Inkus agents are only created on request. Grants, lifecycle state, people and history never leave Brad, and an Inkus edit can never grant a capability or activate an agent. Enable with `BRAD_ADAPTER_INKUS_ENABLED=true`, `BRAD_INKUS_MCP_URL` and `BRAD_INKUS_TOKEN`; try it offline with `BRAD_INKUS_FAKE=1`. See [ADR 0003](docs/adr/0003-inkus-editable-mirror.md).
 - **Obsidian:** would import and export Markdown notes you pick. It never scans a whole vault.
-- **Hermes:** would run approved agents and show their runs, always behind Brad's policy engine.
+- **Hermes:** runs agents from their active Inkus spec, so it follows Brad's edits after each sync. Letting Hermes query Brad's policy engine directly is still open.
 
 The MVP runs without any of them. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
@@ -67,6 +67,7 @@ The MVP runs without any of them. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.m
 | `packages/agent-factory` | Life map → draft agents |
 | `packages/priority-engine` | Explainable ranking of incoming items |
 | `packages/policy-engine` | Deterministic allow / deny / confirm decisions |
+| `packages/adapter-inkus` | Inkus mapping, two-way sync and MCP client (plus an in-memory fake for tests) |
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test   # fast checks

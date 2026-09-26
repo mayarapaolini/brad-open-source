@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentDefinition, ConsentGrant, DecisionRecord, LifeMap } from "@brad/domain";
+import { normalizeAgent, type AgentDefinition, type ConsentGrant, type DecisionRecord, type LifeMap } from "@brad/domain";
 
 const SCHEMA_VERSION = 1;
 
@@ -68,7 +68,7 @@ export class Store {
 
   getAgents(): AgentDefinition[] {
     const rows = this.db.prepare("SELECT body FROM agents ORDER BY position").all() as { body: string }[];
-    return rows.map((r) => JSON.parse(r.body) as AgentDefinition);
+    return rows.map((r) => normalizeAgent(JSON.parse(r.body) as AgentDefinition));
   }
 
   replaceAgents(agents: AgentDefinition[]): void {

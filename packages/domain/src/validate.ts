@@ -95,7 +95,7 @@ export function emptyLifeMap(): LifeMap {
   };
 }
 
-const REASONS = ["importance", "gap", "importance_and_gap"];
+const REASONS = ["importance", "gap", "importance_and_gap", "imported"];
 
 function isCapabilityList(value: unknown): boolean {
   return Array.isArray(value) && value.every((c) => CAPABILITIES.includes(c));
@@ -106,7 +106,13 @@ export function validateAgent(input: unknown, path = "agent"): string[] {
   if (typeof a !== "object" || a === null) return [`${path} must be an object`];
   const errors: string[] = [];
   if (typeof a.id !== "string" || a.id === "") errors.push(`${path}.id is required`);
-  if (!LIFE_DOMAINS.includes(a.domain as never)) errors.push(`${path}.domain is unknown`);
+  if (a.domain !== null && !LIFE_DOMAINS.includes(a.domain as never)) errors.push(`${path}.domain is unknown`);
+  if (a.actionDomains !== undefined && (!Array.isArray(a.actionDomains) || !a.actionDomains.every((d) => LIFE_DOMAINS.includes(d))))
+    errors.push(`${path}.actionDomains contains an unknown domain`);
+  if (a.name !== undefined && typeof a.name !== "string") errors.push(`${path}.name must be a string`);
+  if (a.responsibilities !== undefined && (!Array.isArray(a.responsibilities) || !a.responsibilities.every((r) => typeof r === "string")))
+    errors.push(`${path}.responsibilities must be a list of strings`);
+  if (a.origin !== undefined && a.origin !== "generated" && a.origin !== "inkus") errors.push(`${path}.origin is unknown`);
   if (!AGENT_STATES.includes(a.state as never)) errors.push(`${path}.state is unknown`);
   if (typeof a.goal !== "string") errors.push(`${path}.goal must be a string`);
   if (!REASONS.includes(a.reason as string)) errors.push(`${path}.reason is unknown`);

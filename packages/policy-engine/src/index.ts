@@ -1,5 +1,6 @@
 import {
   CONSEQUENTIAL_CAPABILITIES,
+  agentActionDomains,
   isGrantValid,
   type AgentDefinition,
   type AgentState,
@@ -87,10 +88,17 @@ export function evaluate(request: ActionRequest, ctx: PolicyContext): PolicyDeci
       status: agent && EXECUTABLE_STATES.includes(agent.state) ? "pass" : "fail",
       params: { state: agent?.state ?? "unknown" },
     }),
-    domain_scope: (): StepResult => ({
-      status: agent?.domain === request.domain ? "pass" : "fail",
-      params: { agentDomain: agent?.domain ?? "unknown", requestDomain: request.domain },
-    }),
+    domain_scope: (): StepResult => {
+      // Cross-cutting agents (no domain) may only act where the owner listed them.
+      const allowed = agent ? agentActionDomains(agent) : [];
+      return {
+        status: allowed.includes(request.domain) ? "pass" : "fail",
+        params: {
+          agentDomain: agent?.domain ?? (agent ? "cross_cutting" : "unknown"),
+          requestDomain: request.domain,
+        },
+      };
+    },
     grant_present: (): StepResult =>
       grant
         ? { status: "pass", params: { grantId: grant.id } }

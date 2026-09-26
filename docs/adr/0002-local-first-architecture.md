@@ -1,6 +1,6 @@
 # ADR 0002: Local-first architecture
 
-- **Status:** accepted
+- **Status:** accepted, amended by [ADR 0003](0003-inkus-editable-mirror.md) for Inkus
 - **Date:** 2026-09-26
 - **Code:** `apps/api/src/main.ts`, `apps/api/src/server.ts`, `apps/api/src/store.ts`
 
