@@ -8,10 +8,11 @@
 
 ## Run it
 
-Requires Node.js ≥ 22.13 and pnpm (`corepack enable`).
+Requires Node.js ≥ 22.13 and pnpm. **First time, or seeing `command not found: pnpm`?** Follow the step-by-step [Getting started guide](docs/GETTING_STARTED.md). It covers installing Node.js and pnpm on macOS, Windows and Linux, plus common errors.
 
 ```bash
 git clone https://github.com/mayarapaolini/brad-open-source.git && cd brad-open-source
+corepack enable   # activates pnpm (ships with Node.js)
 pnpm install
 pnpm dev
 ```
