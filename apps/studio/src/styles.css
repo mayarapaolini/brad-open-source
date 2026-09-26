@@ -256,3 +256,14 @@ button.link.edit { padding-left: 0; }
 .synth { border-left: 3px solid var(--accent); padding-left: 10px; }
 .synth.status-user_confirmed { border-color: var(--ok); }
 .synth.status-rejected { border-color: var(--bad); }
+
+/* Secretary */
+.proposal.kind-protect { border-color: var(--ok); }
+.proposal.kind-question { border-style: dashed; }
+.badge.kind-focus { background: var(--accent); color: #fff; }
+.badge.kind-protect { background: var(--ok); color: #fff; }
+.badge.kind-question { background: var(--line); color: var(--text); }
+.protect-note { color: var(--ok); }
+.why-box { background: var(--panel); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+.checkin { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--accent-soft); padding: 10px 14px; border-radius: var(--radius); margin: 10px 0 16px; }
+.silence { display: flex; flex-wrap: wrap; gap: 6px 18px; }

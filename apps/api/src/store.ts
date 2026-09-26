@@ -2,9 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { Answer, Verdict } from "@brad/discovery";
+import type { ProposalFeedback } from "@brad/secretary";
 import { normalizeAgent, type AgentDefinition, type ConsentGrant, type DecisionRecord, type LifeMap } from "@brad/domain";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -51,6 +52,21 @@ const MIGRATIONS: Record<number, string> = {
       verdict TEXT NOT NULL,
       correction TEXT,
       updated_at TEXT NOT NULL
+    );
+  `,
+  4: `
+    CREATE TABLE proposal_feedback (
+      proposal_id TEXT PRIMARY KEY,
+      body TEXT NOT NULL
+    );
+    CREATE TABLE settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    CREATE TABLE checkins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at TEXT NOT NULL,
+      load TEXT NOT NULL
     );
   `,
 };
@@ -228,6 +244,36 @@ export class Store {
       .run(itemId, verdict, correction, new Date().toISOString());
   }
 
+  getProposalFeedback(): Record<string, ProposalFeedback> {
+    const rows = this.db.prepare("SELECT proposal_id, body FROM proposal_feedback").all() as { proposal_id: string; body: string }[];
+    return Object.fromEntries(rows.map((r) => [r.proposal_id, JSON.parse(r.body) as ProposalFeedback]));
+  }
+
+  setProposalFeedback(proposalId: string, feedback: ProposalFeedback): void {
+    this.db
+      .prepare("INSERT INTO proposal_feedback (proposal_id, body) VALUES (?, ?) ON CONFLICT(proposal_id) DO UPDATE SET body = excluded.body")
+      .run(proposalId, JSON.stringify(feedback));
+  }
+
+  getSetting<T>(key: string, fallback: T): T {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
+    return row ? (JSON.parse(row.value) as T) : fallback;
+  }
+
+  setSetting(key: string, value: unknown): void {
+    this.db
+      .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(key, JSON.stringify(value));
+  }
+
+  addCheckin(load: string): void {
+    this.db.prepare("INSERT INTO checkins (at, load) VALUES (?, ?)").run(new Date().toISOString(), load);
+  }
+
+  listCheckins(limit = 8): { at: string; load: string }[] {
+    return this.db.prepare("SELECT at, load FROM checkins ORDER BY id DESC LIMIT ?").all(limit) as { at: string; load: string }[];
+  }
+
   /** Saves the current life map, agents and grants so a change can be undone. */
   createSnapshot(reason: string): number {
     const body: SnapshotBody = { lifeMap: this.getLifeMap(), agents: this.getAgents(), grants: this.getGrants() };
@@ -269,7 +315,7 @@ export class Store {
   /** Deletes every record. Used by "reset" in Studio. */
   reset(): void {
     this.transaction(() => {
-      for (const table of ["life_map", "agents", "grants", "decisions", "snapshots", "answers", "synthesis_feedback"]) this.db.exec(`DELETE FROM ${table}`);
+      for (const table of ["life_map", "agents", "grants", "decisions", "snapshots", "answers", "synthesis_feedback", "proposal_feedback", "settings", "checkins"]) this.db.exec(`DELETE FROM ${table}`);
     });
   }
 

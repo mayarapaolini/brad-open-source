@@ -15,6 +15,7 @@
     "@brad/domain": "workspace:*",
     "@brad/policy-engine": "workspace:*",
     "@brad/priority-engine": "workspace:*",
+    "@brad/secretary": "workspace:*",
     "tsx": "^4.20.0"
   }
 }

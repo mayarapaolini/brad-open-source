@@ -22,6 +22,8 @@
 - [x] explainable priority engine
 - [x] deterministic policy engine with what-if simulation
 - [x] correction loop (owner feedback → one suggested, previewed life-map change)
+- [x] adaptive discovery with a confirmable synthesis
+- [x] secretary proposals: at most three focuses with evidence and trade-offs, one protected area, optional weekly check-in, no external action
 
 ## Milestone 3 — Brad Multiple Agents panel
 

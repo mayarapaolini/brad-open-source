@@ -1,4 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  agencyMetrics,
+  generateProposals,
+  planFocus,
+  type FeedbackAction,
+  type Load,
+} from "@brad/secretary";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
@@ -33,6 +40,7 @@ import {
   type AgentState,
   type BradExport,
   type Capability,
+  type LifeDomainId,
   type ConsentGrant,
   type IncomingItem,
   type LifeMap,
@@ -114,6 +122,24 @@ function discoveryState(store: Store) {
   };
 }
 
+function secretaryState(store: Store) {
+  const map = requireLifeMap(store);
+  const silenced = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
+  const feedback = store.getProposalFeedback();
+  const proposals = generateProposals(map, store.getAnswers(), silenced);
+  const now = new Date().toISOString();
+  const checkins = store.listCheckins();
+  const lastCheckin = checkins[0]?.at;
+  return {
+    plan: planFocus(map, proposals, feedback, now, silenced),
+    feedback,
+    metrics: agencyMetrics(feedback),
+    checkins,
+    // The weekly review is optional: it is offered, never pushed, once a week at most.
+    weeklyDue: !lastCheckin || Date.parse(now) - Date.parse(lastCheckin) >= WEEK,
+  };
+}
+
 function parseExport(input: unknown): BradExport {
   const errors = validateExport(input);
   if (errors.length > 0) throw new HttpError(400, "invalid_export", errors);
@@ -144,6 +170,7 @@ function currentTime(value: unknown): string {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+const WEEK = 7 * DAY;
 const TIERS: readonly Tier[] = ["now", "today", "later"];
 const MAX_NOTE_LENGTH = 500;
 const MAX_NAME_LENGTH = 120;
@@ -563,6 +590,47 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     for (const answer of store.getAnswers()) if (item.basis.includes(answer.id)) store.saveAnswer({ ...answer, status });
     store.addDecision("discovery", { action: "confirm", itemId: item.id, verdict: body.verdict }, { basis: item.basis, corrected: correction !== null });
     return discoveryState(store);
+  },
+
+  "GET /api/secretary": (_req, store) => secretaryState(store),
+
+  "POST /api/secretary/feedback": async (req, store) => {
+    const body = (await readJson(req)) as { proposalId?: string; action?: FeedbackAction; note?: string };
+    const map = requireLifeMap(store);
+    const silenced = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
+    const proposal = generateProposals(map, store.getAnswers(), silenced).find((p) => p.id === body.proposalId);
+    if (!proposal) throw new HttpError(404, "proposal_not_found");
+    if (!["accept", "decline", "snooze", "edit"].includes(body.action ?? "")) throw new HttpError(400, "invalid_action");
+    const now = new Date();
+    const note = typeof body.note === "string" ? body.note.trim().slice(0, 2000) || null : null;
+    if (body.action === "edit" && !note) throw new HttpError(400, "note_required");
+    store.setProposalFeedback(proposal.id, {
+      action: body.action!,
+      note,
+      until: body.action === "snooze" ? new Date(now.getTime() + WEEK).toISOString() : null,
+      at: now.toISOString(),
+    });
+    // Accepting only records the owner's choice. Nothing is sent, scheduled or paid.
+    store.addDecision("secretary", { action: body.action, proposalId: proposal.id, domain: proposal.domain }, { note: note !== null });
+    return secretaryState(store);
+  },
+
+  "POST /api/secretary/silence": async (req, store) => {
+    const body = (await readJson(req)) as { domain?: LifeDomainId; silenced?: boolean };
+    if (!LIFE_DOMAINS.includes(body.domain as LifeDomainId) || typeof body.silenced !== "boolean") throw new HttpError(400, "invalid_request");
+    const current = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
+    const next = body.silenced ? [...new Set([...current, body.domain!])] : current.filter((d) => d !== body.domain);
+    store.setSetting("secretary.silenced", next);
+    store.addDecision("secretary", { action: body.silenced ? "silence" : "unsilence", domain: body.domain }, { silenced: next });
+    return secretaryState(store);
+  },
+
+  "POST /api/secretary/checkin": async (req, store) => {
+    const body = (await readJson(req)) as { load?: Load };
+    if (!["lighter", "same", "heavier"].includes(body.load ?? "")) throw new HttpError(400, "invalid_load");
+    store.addCheckin(body.load!);
+    store.addDecision("secretary", { action: "checkin" }, { load: body.load });
+    return secretaryState(store);
   },
 
   "GET /api/decisions": (_req, store) => ({ decisions: store.listDecisions() }),
