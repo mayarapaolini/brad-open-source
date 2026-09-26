@@ -16,6 +16,7 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "vitest run",
+    "test:e2e": "node scripts/record-demo.mjs --no-gif",
     "demo:gif": "node scripts/record-demo.mjs"
   },
   "devDependencies": {
