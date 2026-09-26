@@ -59,6 +59,9 @@ importers:
       '@brad/priority-engine':
         specifier: workspace:*
         version: link:../../packages/priority-engine
+      '@brad/secretary':
+        specifier: workspace:*
+        version: link:../../packages/secretary
       tsx:
         specifier: ^4.20.0
         version: 4.23.15
@@ -80,6 +83,9 @@ importers:
       '@brad/priority-engine':
         specifier: workspace:*
         version: link:../../packages/priority-engine
+      '@brad/secretary':
+        specifier: workspace:*
+        version: link:../../packages/secretary
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -139,6 +145,15 @@ importers:
 
   packages/priority-engine:
     dependencies:
+      '@brad/domain':
+        specifier: workspace:*
+        version: link:../domain
+
+  packages/secretary:
+    dependencies:
+      '@brad/discovery':
+        specifier: workspace:*
+        version: link:../discovery
       '@brad/domain':
         specifier: workspace:*
         version: link:../domain

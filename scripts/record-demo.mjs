@@ -95,6 +95,30 @@ try {
   assert(true, "the owner confirms the synthesis");
   await capture(page, 3000);
 
+  // Say how Brad may help with health: skip the middle questions, then pick "Organise".
+  for (const id of ["competence", "autonomy", "relatedness"]) {
+    await page.waitForFunction((q) => document.querySelector('[data-testid="question"]')?.getAttribute("data-question") === q, id);
+    await page.getByTestId("answer-skip").click();
+  }
+  await page.waitForFunction(() => document.querySelector('[data-testid="question"]')?.getAttribute("data-question") === "support");
+  await page.getByTestId("option-organise").check();
+  await page.getByTestId("answer-submit").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="question"]')?.getAttribute("data-question") === "frequency");
+
+  // Secretary: at most three focuses, each explained, nothing acted on without the owner.
+  await page.getByTestId("step-secretary").click();
+  const focus = page.getByTestId("focus").locator("article.proposal");
+  await focus.first().waitFor();
+  assert((await focus.count()) <= 3, "the secretary proposes at most three focuses");
+  const organise = page.getByTestId("proposal-health:organise");
+  await organise.getByTestId("proposal-why").click();
+  assert((await organise.innerText()).includes("Sleep before midnight on weekdays"), "'Why?' shows the owner's own answers as evidence");
+  assert((await page.getByTestId("proposal-work:ask_preserve").count()) === 1, "an area that is going well is protected with a question, not a task");
+  await organise.getByTestId("proposal-accept").click();
+  await page.waitForSelector("text=So far: 1 accepted");
+  assert(true, "accepting is recorded and counted as the owner's choice");
+  await capture(page, 3000);
+
   await page.getByTestId("step-lifeMap").click();
   await capture(page, 1800);
 

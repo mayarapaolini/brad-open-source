@@ -12,6 +12,7 @@ import type {
 } from "@brad/domain";
 import type { ActionRequest, PolicyDecision } from "@brad/policy-engine";
 import type { SyncReport } from "@brad/adapter-inkus";
+import type { AgencyMetrics, FeedbackAction, FocusPlan, Load, ProposalFeedback } from "@brad/secretary";
 import type { Answer, AnswerInput, DomainPath, Question, SynthesisItem, Verdict } from "@brad/discovery";
 import type { RankedItem, Suggestion, Tier } from "@brad/priority-engine";
 
@@ -91,6 +92,11 @@ export const api = {
     call<DiscoveryState>("POST", "/api/discovery/synthesis", { itemId, verdict, correction }),
   setAnswerSync: (answerId: string, syncToInkus: boolean) =>
     call<DiscoveryState>("POST", "/api/discovery/answers/sync", { answerId, syncToInkus }),
+  secretary: () => call<SecretaryState>("GET", "/api/secretary"),
+  proposalFeedback: (proposalId: string, action: FeedbackAction, note?: string) =>
+    call<SecretaryState>("POST", "/api/secretary/feedback", { proposalId, action, note }),
+  silence: (domain: LifeDomainId, silenced: boolean) => call<SecretaryState>("POST", "/api/secretary/silence", { domain, silenced }),
+  checkin: (load: Load) => call<SecretaryState>("POST", "/api/secretary/checkin", { load }),
   getDecisions: () => call<{ decisions: DecisionRecord[] }>("GET", "/api/decisions"),
   reset: () => call<{ ok: true }>("DELETE", "/api/data"),
 };
@@ -108,4 +114,12 @@ export interface DiscoveryState {
   domains: { domain: LifeDomainId; path: DomainPath; done: number; total: number; next: Question | null; closed: boolean }[];
   answers: Answer[];
   synthesis: (SynthesisItem & { correction: string | null })[];
+}
+
+export interface SecretaryState {
+  plan: FocusPlan;
+  feedback: Record<string, ProposalFeedback>;
+  metrics: AgencyMetrics;
+  checkins: { at: string; load: Load }[];
+  weeklyDue: boolean;
 }

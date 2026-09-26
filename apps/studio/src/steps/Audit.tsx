@@ -119,6 +119,14 @@ export function Audit({
         return input.action === "sync_consent"
           ? t((result.syncToInkus ? "audit.syncConsentOn" : "audit.syncConsentOff") as MessageKey)
           : t("audit.synthesis", { item: String(input.itemId), verdict: t(`discovery.verdict.${input.verdict}` as MessageKey) });
+      case "secretary":
+        if (input.action === "checkin") return t("audit.checkin", { load: t(`secretary.load.${result.load}` as MessageKey) });
+        if (input.action === "silence" || input.action === "unsilence")
+          return t(`audit.${input.action}` as MessageKey, { domain: t(`domain.${input.domain}` as MessageKey) });
+        return t("audit.proposal", {
+          proposal: String(input.proposalId),
+          action: t(`secretary.feedback.${input.action}` as MessageKey),
+        });
       case "import":
         if (input.action === "restore") return t("audit.restore", { id: Number(input.snapshotId) });
         return t("audit.import", { agents: Number(result.agents ?? 0), grants: Number(result.grants ?? 0) });
