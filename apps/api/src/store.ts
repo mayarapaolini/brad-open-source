@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { normalizeAgent, type AgentDefinition, type ConsentGrant, type DecisionRecord, type LifeMap } from "@brad/domain";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -30,7 +30,29 @@ const MIGRATIONS: Record<number, string> = {
       result TEXT NOT NULL
     );
   `,
+  2: `
+    CREATE TABLE snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      body TEXT NOT NULL
+    );
+  `,
 };
+
+export interface SnapshotBody {
+  lifeMap: LifeMap | null;
+  agents: AgentDefinition[];
+  grants: ConsentGrant[];
+}
+
+export interface SnapshotInfo {
+  id: number;
+  createdAt: string;
+  reason: string;
+  agents: number;
+  grants: number;
+}
 
 /** Local SQLite store. The file never leaves the machine; nothing is sent to a network service. */
 export class Store {
@@ -162,10 +184,48 @@ export class Store {
     }));
   }
 
+  /** Saves the current life map, agents and grants so a change can be undone. */
+  createSnapshot(reason: string): number {
+    const body: SnapshotBody = { lifeMap: this.getLifeMap(), agents: this.getAgents(), grants: this.getGrants() };
+    const info = this.db
+      .prepare("INSERT INTO snapshots (created_at, reason, body) VALUES (?, ?, ?)")
+      .run(new Date().toISOString(), reason, JSON.stringify(body));
+    return Number(info.lastInsertRowid);
+  }
+
+  getSnapshot(id: number): SnapshotBody | null {
+    const row = this.db.prepare("SELECT body FROM snapshots WHERE id = ?").get(id) as { body: string } | undefined;
+    return row ? (JSON.parse(row.body) as SnapshotBody) : null;
+  }
+
+  listSnapshots(limit = 20): SnapshotInfo[] {
+    const rows = this.db
+      .prepare("SELECT id, created_at, reason, body FROM snapshots ORDER BY id DESC LIMIT ?")
+      .all(limit) as { id: number; created_at: string; reason: string; body: string }[];
+    return rows.map((r) => {
+      const body = JSON.parse(r.body) as SnapshotBody;
+      return { id: Number(r.id), createdAt: r.created_at, reason: r.reason, agents: body.agents.length, grants: body.grants.length };
+    });
+  }
+
+  /** Replaces the current state with a snapshot. An empty snapshot clears the life map too. */
+  restore(body: SnapshotBody): void {
+    this.transaction(() => {
+      if (body.lifeMap) this.saveLifeMap(body.lifeMap);
+      else this.db.exec("DELETE FROM life_map");
+      this.db.exec("DELETE FROM agents");
+      const insertAgent = this.db.prepare("INSERT INTO agents (id, position, body) VALUES (?, ?, ?)");
+      body.agents.forEach((a, i) => insertAgent.run(a.id, i, JSON.stringify(a)));
+      this.db.exec("DELETE FROM grants");
+      const insertGrant = this.db.prepare("INSERT INTO grants (id, agent_id, body) VALUES (?, ?, ?)");
+      for (const g of body.grants) insertGrant.run(g.id, g.agentId, JSON.stringify(g));
+    });
+  }
+
   /** Deletes every record. Used by "reset" in Studio. */
   reset(): void {
     this.transaction(() => {
-      for (const table of ["life_map", "agents", "grants", "decisions"]) this.db.exec(`DELETE FROM ${table}`);
+      for (const table of ["life_map", "agents", "grants", "decisions", "snapshots"]) this.db.exec(`DELETE FROM ${table}`);
     });
   }
 

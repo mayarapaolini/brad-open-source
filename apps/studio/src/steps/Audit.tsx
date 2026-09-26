@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { demoInbox, type AgentDefinition, type DecisionRecord, type LifeDomainId } from "@brad/domain";
 import { agentLabel } from "../agentLabel";
 import type { Suggestion } from "@brad/priority-engine";
-import { api } from "../api";
+import { api, type SnapshotInfo } from "../api";
 import { describeSuggestion } from "../suggestions";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/en";
@@ -10,14 +10,27 @@ import type { MessageKey } from "../i18n/en";
 // Records are stored as JSON; read them loosely and only for display.
 type Loose = Record<string, unknown>;
 
-export function Audit({ onError, agents }: { onError: (e: unknown) => void; agents: AgentDefinition[] }) {
+export function Audit({
+  onError,
+  agents,
+  onRestore,
+}: {
+  onError: (e: unknown) => void;
+  agents: AgentDefinition[];
+  onRestore: (snapshotId: number) => void;
+}) {
   const { t, lang } = useI18n();
   const [records, setRecords] = useState<DecisionRecord[] | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
 
   useEffect(() => {
     api
       .getDecisions()
       .then((r) => setRecords(r.decisions))
+      .catch(onError);
+    api
+      .snapshots()
+      .then((r) => setSnapshots(r.snapshots))
       .catch(onError);
   }, [onError]);
 
@@ -103,6 +116,7 @@ export function Audit({ onError, agents }: { onError: (e: unknown) => void; agen
         });
       }
       case "import":
+        if (input.action === "restore") return t("audit.restore", { id: Number(input.snapshotId) });
         return t("audit.import", { agents: Number(result.agents ?? 0), grants: Number(result.grants ?? 0) });
     }
   };
@@ -129,6 +143,24 @@ export function Audit({ onError, agents }: { onError: (e: unknown) => void; agen
             </li>
           ))}
         </ol>
+      )}
+      {snapshots.length > 0 && (
+        <>
+          <h3>{t("audit.versions")}</h3>
+          <p className="muted small">{t("audit.versionsIntro")}</p>
+          <ol className="audit" data-testid="snapshot-list">
+            {snapshots.map((s) => (
+              <li key={s.id}>
+                <span className="muted small tabular">v{s.id}</span>
+                <span className="badge kind-import">{t(`audit.snapshot.${s.reason}` as MessageKey)}</span>
+                <span className="small">{t("audit.snapshotSummary", { agents: s.agents, grants: s.grants })}</span>
+                <button className="link" onClick={() => onRestore(s.id)} data-testid="snapshot-restore">
+                  {t("audit.restoreButton")}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </section>
   );

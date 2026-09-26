@@ -27,7 +27,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 5. **Policy engine:** you ask *"can this agent do this?"* and get `allow`, `deny` or `confirm` with a full rule trace. Deny by default, fixed rule order, and no LLM involved.
 6. **Governance:** an agent moves `draft → configured → simulated → approved → active` only when it has a goal, requested capabilities, a policy simulation you have seen and a current grant. You grant capabilities for 30 days and can revoke them at any time; a revoked grant denies the action immediately.
 7. **Correction loop:** when a ranking looks wrong, mark the item as *should be Now / Today / Later*. Brad records the feedback, proposes one concrete life-map change (for example *"Let Jordan Blake interrupt quiet hours: score 61 → 86, Today → Now"*) and applies it only when you click. Adding a new person is never automatic.
-8. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON; imported active agents arrive paused.
+8. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON. An import is previewed first (what changes, warnings such as a UTC time zone), applied only once, and can be undone; imported active agents arrive paused.
 
 ## Works today · in development · planned
 
@@ -43,7 +43,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 | Correction loop: feedback → suggested change → apply | | |
 | Deterministic policy engine with what-if checks | | |
 | Local decision history (audit view) | | |
-| JSON export/import with validation | | |
+| JSON export/import with a diff preview, time-zone check and undo (previous versions) | | |
 | Local SQLite persistence (`node:sqlite`) | | |
 | Synthetic demo profile | | |
 | Unit tests for permission, denial, lifecycle and prioritisation, plus a browser end-to-end test | | |

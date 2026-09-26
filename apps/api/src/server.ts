@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
@@ -10,6 +10,9 @@ import {
   LIFE_DOMAINS,
   EXPORT_FORMAT,
   checkTransition,
+  datedAssessments,
+  planImport,
+  withTimeZone,
   demoGrantsAt,
   demoInbox,
   demoLifeMap,
@@ -83,6 +86,31 @@ function requireLifeMap(store: Store): LifeMap {
   const map = store.getLifeMap();
   if (!map) throw new HttpError(409, "no life map yet: complete the diagnostic or load the demo profile");
   return map;
+}
+
+function parseExport(input: unknown): BradExport {
+  const errors = validateExport(input);
+  if (errors.length > 0) throw new HttpError(400, "invalid_export", errors);
+  return input as BradExport;
+}
+
+/** Identity of an export's content (not its timestamp), so the same data is never applied twice by accident. */
+function contentHash(data: BradExport): string {
+  return createHash("sha256").update(JSON.stringify([data.lifeMap, data.agents, data.grants])).digest("hex");
+}
+
+function lastImportHash(store: Store): string | null {
+  const last = store.listDecisions(500).find((d) => d.kind === "import" && (d.input as { hash?: string }).hash);
+  return last ? ((last.input as { hash: string }).hash ?? null) : null;
+}
+
+function isValidTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function currentTime(value: unknown): string {
@@ -313,16 +341,57 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     return snapshot;
   },
 
+  "POST /api/import/preview": async (req, store) => {
+    const data = parseExport(await readJson(req));
+    const plan = planImport({ lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants() }, data);
+    const hash = contentHash(data);
+    return { plan, hash, alreadyImported: lastImportHash(store) === hash };
+  },
+
   "POST /api/import": async (req, store) => {
-    const body = await readJson(req);
-    const errors = validateExport(body);
-    if (errors.length > 0) throw new HttpError(400, "invalid_export", errors);
-    const data = body as BradExport;
+    const body = (await readJson(req)) as { export?: unknown; timeZone?: unknown; force?: unknown } & Record<string, unknown>;
+    // Older clients post the export itself; newer ones wrap it with options.
+    const wrapped = body.export !== undefined;
+    const data = parseExport(wrapped ? body.export : body);
+    const hash = contentHash(data);
+    if (body.force !== true && lastImportHash(store) === hash) throw new HttpError(409, "already_imported");
+
+    const fromZone = data.lifeMap.boundaries.timeZone;
+    let lifeMap = datedAssessments(data.lifeMap, data.exportedAt);
+    if (typeof body.timeZone === "string") {
+      if (!isValidTimeZone(body.timeZone)) throw new HttpError(400, "invalid_time_zone");
+      lifeMap = withTimeZone(lifeMap, body.timeZone);
+    } else if (fromZone === "UTC") {
+      // UTC in a personal export is almost always a configuration mistake: ask before storing it.
+      throw new HttpError(409, "needs_timezone");
+    }
+
+    const snapshotId = store.createSnapshot("before_import");
     // An imported agent never starts acting on its own: active agents arrive paused.
     const agents = data.agents.map((a) => (a.state === "active" ? { ...a, state: "paused" as const } : a));
-    store.replaceAll(data.lifeMap, agents, data.grants);
-    store.addDecision("import", { exportedAt: data.exportedAt }, { agents: agents.length, grants: data.grants.length });
-    return { lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants() };
+    store.replaceAll(lifeMap, agents, data.grants);
+    store.addDecision(
+      "import",
+      { exportedAt: data.exportedAt, hash, snapshotId, timeZoneFrom: fromZone, timeZoneTo: lifeMap.boundaries.timeZone },
+      { agents: agents.length, grants: data.grants.length },
+    );
+    return { lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants(), snapshotId };
+  },
+
+  "GET /api/snapshots": (_req, store) => ({ snapshots: store.listSnapshots() }),
+
+  "POST /api/snapshots/restore": async (req, store) => {
+    const body = (await readJson(req)) as { snapshotId?: number };
+    const snapshot = Number.isInteger(body.snapshotId) ? store.getSnapshot(body.snapshotId!) : null;
+    if (!snapshot) throw new HttpError(404, "snapshot_not_found");
+    // Restoring is itself undoable, and never re-activates anything.
+    const undoId = store.createSnapshot("before_restore");
+    store.restore({
+      ...snapshot,
+      agents: snapshot.agents.map((a) => (a.state === "active" ? { ...a, state: "paused" as const } : a)),
+    });
+    store.addDecision("import", { action: "restore", snapshotId: body.snapshotId, undoSnapshotId: undoId }, { agents: snapshot.agents.length });
+    return { lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants(), snapshotId: undoId };
   },
 
   "GET /api/agents": (_req, store) => ({ agents: store.getAgents(), grants: store.getGrants() }),

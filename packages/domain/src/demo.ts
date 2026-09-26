@@ -152,3 +152,21 @@ export function demoGrantsAt(now: string): ConsentGrant[] {
       : { ...g, issuedAt: at(-9), expiresAt: at(300) },
   );
 }
+
+/**
+ * A synthetic export shaped like a real first export: stored in UTC by mistake, with the
+ * generated agents in draft and no grants. Used to exercise the import preview and time-zone fix.
+ */
+export function demoExportUtc(agents: import("./types").AgentDefinition[] = []): import("./export").BradExport {
+  return {
+    format: "brad-export",
+    version: 1,
+    exportedAt: "2026-09-26T12:00:00Z",
+    lifeMap: {
+      ...demoLifeMap,
+      boundaries: { ...demoLifeMap.boundaries, timeZone: "UTC", quietHours: { start: "19:00", end: "10:00" } },
+    },
+    agents,
+    grants: [],
+  };
+}
