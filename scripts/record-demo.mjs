@@ -74,7 +74,7 @@ try {
 
   await page.getByTestId("step-agents").click();
   await page.getByTestId("generate-agents").click();
-  const cards = page.getByTestId("agent-card");
+  const cards = page.locator("article.card.agent");
   await cards.first().waitFor();
   assert((await cards.count()) === 6, "six draft agents are proposed for the demo profile");
   assert((await page.locator(".badge.state-draft").count()) === 6, "every agent starts as a draft");
@@ -105,7 +105,53 @@ try {
   await page.getByTestId("policy-decision").scrollIntoViewIfNeeded();
   await capture(page, 2600);
 
+  // Governance: walk the family agent to active, then revoke its permission.
+  const family = page.getByTestId("agent-family");
+  const familyState = family.getByTestId("agent-state");
+  await page.getByTestId("step-agents").click();
+  for (const [to, label] of [
+    ["configured", "configured"],
+    ["simulated", "simulated"],
+    ["approved", "approved"],
+    ["active", "active"],
+  ]) {
+    await family.getByTestId(`move-${to}`).click();
+    await page.waitForFunction(
+      ([sel, text]) => document.querySelector(sel)?.textContent === text,
+      ['[data-testid="agent-family"] [data-testid="agent-state"]', label],
+    );
+  }
+  assert((await familyState.innerText()) === "active", "the family agent can be configured, simulated, approved and activated");
+  await family.scrollIntoViewIfNeeded();
+  await capture(page, 2600);
+
+  const allowedOrDenied = async () => {
+    await page.getByTestId("step-simulation").click();
+    await page.getByTestId("policy-capability").selectOption("draft_reply");
+    await page.getByTestId("evaluate-policy").click();
+    await page.getByTestId("policy-decision").waitFor();
+    await page.getByTestId("policy-decision").scrollIntoViewIfNeeded();
+    return page.getByTestId("policy-decision").innerText();
+  };
+  assert((await allowedOrDenied()).includes("Allowed"), "an active agent with a current grant may draft replies");
+  await capture(page, 2200);
+
+  await page.getByTestId("step-agents").click();
+  await family.getByTestId("revoke-draft_reply").click();
+  await family.getByTestId("grant-draft_reply").waitFor();
+  assert((await allowedOrDenied()).includes("Denied"), "revoking the grant denies the action immediately");
+
+  await page.getByTestId("step-audit").click();
+  await page.getByTestId("audit-item").first().waitFor();
+  const audit = await page.getByTestId("audit-list").innerText();
+  assert(
+    audit.includes("Family agent: approved → active") && audit.includes("Revoked Family agent's permission to draft replies"),
+    "the audit history records lifecycle and permission changes",
+  );
+  await capture(page, 2600);
+
   await page.getByTestId("lang-pt").click();
+  await page.getByTestId("step-simulation").click();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.getByTestId("run-simulation").click();
   await page.getByTestId("ranked-item").first().waitFor();

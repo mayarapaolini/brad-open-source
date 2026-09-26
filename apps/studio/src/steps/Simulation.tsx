@@ -147,7 +147,6 @@ function PolicyPanel({ agents, onError }: { agents: AgentDefinition[]; onError: 
         request: { agentId, capability, domain },
         assumeState: assumeApproved ? "approved" : undefined,
         assumeGrant,
-        now: demoNow,
       });
       setDecision(res.decision);
     } catch (e) {

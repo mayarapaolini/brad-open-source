@@ -4,7 +4,7 @@
 
 > **Status:** open-source architecture and specification for a personal multi-agent system, with its first MVP in development. The vertical slice below runs today. Nothing connects to real inboxes, calendars or external services yet.
 
-![Brad Studio demo: diagnostic, draft agents, explained prioritisation and policy decisions](docs/assets/demo.gif)
+![Brad Studio demo: diagnostic, draft agents, explained prioritisation, policy decisions, governance and audit](docs/assets/demo.gif)
 
 ## Run it
 
@@ -25,20 +25,26 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 3. **Draft agents:** Brad proposes one agent for each area that matters a lot or is neglected. Every agent starts as a `draft` with **no permissions**. Capabilities are only *requested*, and those your boundaries forbid are dropped.
 4. **Simulation:** Brad ranks a synthetic inbox and answers questions like *"why did this family message get priority?"* Each score is a sum of named rules you can inspect.
 5. **Policy engine:** you ask *"can this agent do this?"* and get `allow`, `deny` or `confirm` with a full rule trace. Deny by default, fixed rule order, and no LLM involved.
+6. **Governance:** an agent moves `draft → configured → simulated → approved → active` only when it has a goal, requested capabilities, a policy simulation you have seen and a current grant. You grant capabilities for 30 days and can revoke them at any time; a revoked grant denies the action immediately.
+7. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON; imported active agents arrive paused.
 
 ## Works today · in development · planned
 
 | Works today | In development | Planned |
 | --- | --- | --- |
-| Local Studio (EN/PT) | Agent lifecycle transitions and grant management in the UI | Encryption at rest for the local store |
-| Wheel of Life diagnostic | Decision/audit history view (API exists: `GET /api/decisions`) | Optional adapters: Inkus, Obsidian, Hermes |
-| Editable life map: goals, people, boundaries | Life map import/export and CLI | Real inbox and calendar connectors |
+| Local Studio (EN/PT) | CLI for validation and migrations | Encryption at rest for the local store |
+| Wheel of Life diagnostic | Correction loop (owner feedback on decisions) | Optional adapters: Inkus, Obsidian, Hermes |
+| Editable life map: goals, people, boundaries | | Real inbox and calendar connectors |
 | Draft agent generation (no grants) | | Narrow, confirm-first automation recipes |
-| Explainable priority simulation | | Threat model and security review |
+| Agent lifecycle with enforced requirements | | Threat model and security review |
+| Time-boxed grants with revocation | | |
+| Explainable priority simulation | | |
 | Deterministic policy engine with what-if checks | | |
+| Local decision history (audit view) | | |
+| JSON export/import with validation | | |
 | Local SQLite persistence (`node:sqlite`) | | |
 | Synthetic demo profile | | |
-| Unit tests for permission, denial and prioritisation, plus a browser end-to-end test | | |
+| Unit tests for permission, denial, lifecycle and prioritisation, plus a browser end-to-end test | | |
 | CI: lint, typecheck, tests, build, e2e | | |
 
 ## Optional adapters (not required, not implemented yet)
