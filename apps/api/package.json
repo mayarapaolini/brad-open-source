@@ -1,0 +1,18 @@
+{
+  "name": "@brad/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --disable-warning=ExperimentalWarning --import tsx --watch src/main.ts",
+    "start": "node --disable-warning=ExperimentalWarning --import tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@brad/agent-factory": "workspace:*",
+    "@brad/domain": "workspace:*",
+    "@brad/policy-engine": "workspace:*",
+    "@brad/priority-engine": "workspace:*",
+    "tsx": "^4.20.0"
+  }
+}

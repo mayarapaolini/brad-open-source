@@ -8,17 +8,20 @@
 
 ## Milestone 1 — Local diagnostic
 
-- guided Wheel of Life interview
-- editable scores, importance, goals, and boundaries
-- local encrypted persistence
-- safe import/export with synthetic demo profiles
+- [x] Wheel of Life diagnostic (discovery step)
+- [x] editable scores, importance, goals, people, and boundaries
+- [x] local persistence (SQLite)
+- [ ] encryption at rest
+- [x] synthetic demo profile
+- [ ] safe import/export
 
 ## Milestone 2 — Agent portfolio
 
-- one draft agent per life domain
-- people and priority mapping
-- explainable priority engine
-- simulation and correction loop
+- [x] draft agents for important or neglected life domains, with no grants
+- [x] people and priority mapping
+- [x] explainable priority engine
+- [x] deterministic policy engine with what-if simulation
+- [ ] correction loop (owner feedback on decisions)
 
 ## Milestone 3 — Brad Multiple Agents panel
 

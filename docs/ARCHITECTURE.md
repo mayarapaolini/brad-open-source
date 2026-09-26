@@ -16,7 +16,7 @@
 
 ## Source of truth
 
-The local encrypted data store is canonical. Integrations receive projections with purpose, scope, expiry, and provenance. Conflicts never silently overwrite local user intent.
+The local data store is canonical (SQLite today; encryption at rest is planned). Integrations receive projections with purpose, scope, expiry, and provenance. Conflicts never silently overwrite local user intent.
 
 ## Core flow
 

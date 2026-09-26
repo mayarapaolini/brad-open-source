@@ -19,6 +19,6 @@ Until the first stable release, only the latest commit on the default branch is 
 - connector content is untrusted and cannot override Brad policies
 - logs are redacted and exclude message bodies or personal notes by default
 - dependencies and GitHub Actions must be pinned and reviewed
-- the local encrypted store remains the source of truth
+- the local store remains the source of truth (encryption at rest is planned, not yet implemented)
 
 Brad handles intimate context. Treat family graphs, life scores, schedules, and personal notes as sensitive even when they do not look like credentials.

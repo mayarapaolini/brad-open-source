@@ -1,60 +1,80 @@
-# Brad Open Source
+# Brad
 
-Brad is a local-first control plane for designing, governing, and refining a personal system of AI agents.
+**Brad is a local-first control plane that transforms a person's priorities, relationships and constraints into a governed portfolio of AI agents.**
 
-It begins with a **Wheel of Life diagnostic** because people do not always know which agents they need. Brad helps a person map the areas of life that matter, understand priorities and boundaries, and generate a coordinated set of agents instead of disconnected bots.
+> **Status:** open-source architecture and specification for a personal multi-agent system, with its first MVP in development. The vertical slice below runs today. Nothing connects to real inboxes, calendars or external services yet.
 
-## Life domains
+![Brad Studio demo: diagnostic, draft agents, explained prioritisation and policy decisions](docs/assets/demo.gif)
 
-- family and close relationships
-- work and career
-- study and learning
-- health and wellbeing
-- finances
-- home and daily operations
-- social life and community
-- hobbies, creativity, and leisure
-- personal growth and spirituality
-- contribution and impact
+## Run it
 
-Example: a scheduling or inbox agent can prioritize a message from a close family member only after the user identifies that relationship, defines the desired priority, and grants the relevant permission.
+Requires Node.js ≥ 22.13 and pnpm (`corepack enable`).
 
-## Architecture
+```bash
+git clone https://github.com/mayarapaolini/brad-open-source.git && cd brad-open-source
+pnpm install
+pnpm dev
+```
 
-- **Brad Studio:** local interface for the diagnostic, life map, agents, permissions, simulations, and audit.
-- **Brad Core:** domain model, agent factory, prioritization, policy evaluation, and adapter contracts.
-- **Inkus:** opt-in publication and collaboration for approved agent definitions and documentation.
-- **Obsidian:** user-selected Markdown knowledge import and export.
-- **Hermes:** execution and operations panel, receiving only the minimum context allowed for a task.
+Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on your machine. The API only listens on `127.0.0.1`, and data lives in `.brad/brad.db`.
 
-The local encrypted store is the source of truth. Integrations receive purpose-bound projections, never the full personal profile by default.
+## What the MVP does
+
+1. **Diagnostic:** you rate each life area for satisfaction and importance. The Wheel of Life is only the discovery step that shows which agents you need. It is not a medical or psychological assessment.
+2. **Life map:** you edit goals, the people who matter (relationship, priority, who may interrupt quiet hours) and boundaries: quiet hours, capabilities no agent may ever use, and areas where Brad must always ask first.
+3. **Draft agents:** Brad proposes one agent for each area that matters a lot or is neglected. Every agent starts as a `draft` with **no permissions**. Capabilities are only *requested*, and those your boundaries forbid are dropped.
+4. **Simulation:** Brad ranks a synthetic inbox and answers questions like *"why did this family message get priority?"* Each score is a sum of named rules you can inspect.
+5. **Policy engine:** you ask *"can this agent do this?"* and get `allow`, `deny` or `confirm` with a full rule trace. Deny by default, fixed rule order, and no LLM involved.
+
+## Works today · in development · planned
+
+| Works today | In development | Planned |
+| --- | --- | --- |
+| Local Studio (EN/PT) | Agent lifecycle transitions and grant management in the UI | Encryption at rest for the local store |
+| Wheel of Life diagnostic | Decision/audit history view (API exists: `GET /api/decisions`) | Optional adapters: Inkus, Obsidian, Hermes |
+| Editable life map: goals, people, boundaries | Life map import/export and CLI | Real inbox and calendar connectors |
+| Draft agent generation (no grants) | | Narrow, confirm-first automation recipes |
+| Explainable priority simulation | | Threat model and security review |
+| Deterministic policy engine with what-if checks | | |
+| Local SQLite persistence (`node:sqlite`) | | |
+| Synthetic demo profile | | |
+| Unit tests for permission, denial and prioritisation, plus a browser end-to-end test | | |
+| CI: lint, typecheck, tests, build, e2e | | |
+
+## Optional adapters (not required, not implemented yet)
+
+- **Inkus:** would publish approved agent definitions and documentation. It never receives credentials or the full profile.
+- **Obsidian:** would import and export Markdown notes you pick. It never scans a whole vault.
+- **Hermes:** would run approved agents and show their runs, always behind Brad's policy engine.
+
+The MVP runs without any of them. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `apps/studio` | React + Vite interface: diagnostic, life map, agents, simulation |
+| `apps/api` | Localhost-only HTTP API and SQLite store |
+| `packages/domain` | Life map types, validation, synthetic demo data |
+| `packages/agent-factory` | Life map → draft agents |
+| `packages/priority-engine` | Explainable ranking of incoming items |
+| `packages/policy-engine` | Deterministic allow / deny / confirm decisions |
+
+```bash
+pnpm lint && pnpm typecheck && pnpm test   # fast checks
+pnpm build && pnpm test:e2e                # browser flow (needs a Playwright Chromium)
+pnpm demo:gif                              # re-record docs/assets/demo.gif
+```
 
 ## Safety principles
 
-- local-first and offline-capable
-- deny by default and least privilege
-- no credentials in profiles, prompts, logs, or exports
-- preview and confirmation before consequential actions
-- provenance, audit history, revocation, and reversible changes
-- no silent surveillance or background ingestion
-- sensitive data is minimized and redacted
-- the Wheel of Life is reflective guidance, not a medical or psychological diagnosis
+- local-first; no network services and no LLM in the MVP
+- deny by default and least privilege; drafts can never act
+- no credentials in profiles, prompts, logs or exports
+- confirmation before consequential actions (send, schedule, delete, pay)
+- every decision is explainable and recorded locally
+- only synthetic data in examples, tests and screenshots
 
-## Status
-
-The repository is in the **foundation/specification** stage. The first milestone is a local diagnostic that produces an editable life map and draft agent portfolio without connecting to external services.
-
-## Planned monorepo
-
-- `apps/studio` — Brad Multiple Agents panel
-- `apps/api` — localhost-only API boundary
-- `apps/cli` — validation, import/export, and migrations
-- `packages/domain` — life map and agent definitions
-- `packages/policy-engine` — consent and action gates
-- `packages/priority-engine` — explainable ranking
-- `packages/agent-factory` — draft-agent generation
-- `packages/adapter-sdk` — Inkus, Obsidian, and Hermes contracts
-
-Read [SECURITY.md](SECURITY.md) before contributing. Never use real personal data, tokens, or private messages in examples, issues, tests, or screenshots.
+Read [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Licensed under Apache-2.0.
