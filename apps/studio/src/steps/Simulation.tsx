@@ -13,6 +13,7 @@ import type { PolicyDecision } from "@brad/policy-engine";
 import type { Contribution, RankedItem, Suggestion, Tier } from "@brad/priority-engine";
 import { api, ApiError } from "../api";
 import { describeSuggestion } from "../suggestions";
+import { agentLabel } from "../agentLabel";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/en";
 
@@ -245,7 +246,8 @@ function PolicyPanel({ agents, onError }: { agents: AgentDefinition[]; onError: 
   const { t } = useI18n();
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [capability, setCapability] = useState<Capability>("send_message");
-  const [domain, setDomain] = useState<LifeDomainId>(agents[0]?.domain ?? "family");
+  const firstDomain = (a: AgentDefinition | undefined): LifeDomainId => a?.domain ?? a?.actionDomains?.[0] ?? "family";
+  const [domain, setDomain] = useState<LifeDomainId>(firstDomain(agents[0]));
   const [assumeApproved, setAssumeApproved] = useState(false);
   const [assumeGrant, setAssumeGrant] = useState(false);
   const [decision, setDecision] = useState<PolicyDecision | null>(null);
@@ -253,7 +255,7 @@ function PolicyPanel({ agents, onError }: { agents: AgentDefinition[]; onError: 
   useEffect(() => {
     if (!agents.some((a) => a.id === agentId) && agents[0]) {
       setAgentId(agents[0].id);
-      setDomain(agents[0].domain);
+      setDomain(firstDomain(agents[0]));
     }
   }, [agents, agentId]);
 
@@ -263,7 +265,8 @@ function PolicyPanel({ agents, onError }: { agents: AgentDefinition[]; onError: 
   const explainDecision = (d: PolicyDecision): string => {
     const params: Record<string, string> = { ...d.trace.find((s) => s.rule === d.decidedBy)?.params };
     for (const key of ["domain", "agentDomain", "requestDomain"]) {
-      if (params[key] && params[key] !== "unknown") params[key] = t(`domain.${params[key] as LifeDomainId}`);
+      if (params[key] === "cross_cutting") params[key] = t("agents.crossCutting");
+      else if (params[key] && params[key] !== "unknown") params[key] = t(`domain.${params[key] as LifeDomainId}`);
     }
     if (params.capability) params.capability = t(`capability.${params.capability as Capability}`);
     if (params.state && params.state !== "unknown") params.state = t(`state.${params.state as AgentState}`);
@@ -300,12 +303,12 @@ function PolicyPanel({ agents, onError }: { agents: AgentDefinition[]; onError: 
                 onChange={(e) => {
                   setAgentId(e.target.value);
                   const agent = agents.find((a) => a.id === e.target.value);
-                  if (agent) setDomain(agent.domain);
+                  if (agent) setDomain(firstDomain(agent));
                 }}
               >
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {t("agents.name", { domain: t(`domain.${a.domain}`) })} ({t(`state.${a.state}`)})
+                    {agentLabel(t, a)} ({t(`state.${a.state}`)})
                   </option>
                 ))}
               </select>

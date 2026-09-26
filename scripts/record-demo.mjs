@@ -18,7 +18,14 @@ const dataDir = mkdtempSync(join(tmpdir(), "brad-demo-"));
 
 const api = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "--import", "tsx", "src/main.ts"], {
   cwd: "apps/api",
-  env: { ...process.env, BRAD_API_PORT: String(PORT), BRAD_DATA_DIR: dataDir },
+  // Synthetic in-memory Inkus: the sync flow is exercised without any real account.
+  env: {
+    ...process.env,
+    BRAD_API_PORT: String(PORT),
+    BRAD_DATA_DIR: dataDir,
+    BRAD_ADAPTER_INKUS_ENABLED: "true",
+    BRAD_INKUS_FAKE: "1",
+  },
   stdio: "inherit",
   detached: true,
 });
@@ -124,7 +131,7 @@ try {
   await capture(page, 2600);
 
   // Governance: walk the family agent to active, then revoke its permission.
-  const family = page.getByTestId("agent-family");
+  const family = page.getByTestId("agent-agent-family");
   const familyState = family.getByTestId("agent-state");
   await page.getByTestId("step-agents").click();
   for (const [to, label] of [
@@ -136,7 +143,7 @@ try {
     await family.getByTestId(`move-${to}`).click();
     await page.waitForFunction(
       ([sel, text]) => document.querySelector(sel)?.textContent === text,
-      ['[data-testid="agent-family"] [data-testid="agent-state"]', label],
+      ['[data-testid="agent-agent-family"] [data-testid="agent-state"]', label],
     );
   }
   assert((await familyState.innerText()) === "active", "the family agent can be configured, simulated, approved and activated");
@@ -168,6 +175,32 @@ try {
       audit.includes("Applied: Let Jordan Blake interrupt quiet hours"),
     "the audit history records corrections, lifecycle and permission changes",
   );
+  await capture(page, 2600);
+
+  // Inkus: import its agents, export Brad's, then edit one here and push it back.
+  await page.getByTestId("step-agents").click();
+  await page.getByTestId("inkus-sync").click();
+  const syncReport = page.getByTestId("inkus-report");
+  await syncReport.waitFor();
+  assert(
+    (await syncReport.innerText()).includes("4 imported") && (await syncReport.innerText()).includes("6 created in Inkus"),
+    "one sync imports the Inkus agents and exports Brad's agents",
+  );
+  const orchestrator = page.locator("article.card.agent").filter({ hasText: "Demo Life Orchestrator" });
+  assert(
+    (await orchestrator.innerText()).includes("no area yet (denied everywhere)"),
+    "a cross-cutting Inkus agent may act nowhere until the owner allows it",
+  );
+  await orchestrator.getByTestId("edit-agent").click();
+  await orchestrator.getByTestId("edit-action-work").check();
+  await orchestrator.getByTestId("edit-save").click();
+  await orchestrator.locator(".badge.unsynced").waitFor();
+  await orchestrator.scrollIntoViewIfNeeded();
+  await capture(page, 2600);
+  await page.getByTestId("inkus-sync").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="inkus-report"]')?.textContent?.includes("1 pushed"));
+  assert((await orchestrator.innerText()).includes("May act in: Work"), "an edit made in Brad is pushed to Inkus");
+  await page.evaluate(() => window.scrollTo(0, 0));
   await capture(page, 2600);
 
   await page.getByTestId("lang-pt").click();

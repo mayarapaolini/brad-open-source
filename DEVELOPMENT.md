@@ -30,7 +30,7 @@ Nothing is hidden about this split:
 ## Rules that do not bend
 
 - **Deterministic core.** Agent generation, prioritisation, policy decisions and correction suggestions are pure functions with no LLM, network or hidden clock. See [ADR 0001](docs/adr/0001-deterministic-policy-engine.md).
-- **Local-first.** The API binds to `127.0.0.1` and data stays in a local SQLite file. See [ADR 0002](docs/adr/0002-local-first-architecture.md).
+- **Local-first.** The API binds to `127.0.0.1` and data stays in a local SQLite file. See [ADR 0002](docs/adr/0002-local-first-architecture.md). Inkus mirrors agent definitions only: [ADR 0003](docs/adr/0003-inkus-editable-mirror.md).
 - **Synthetic data only** in fixtures, tests, screenshots, issues and examples.
 - **Honest status.** The README's *works today / in development / planned* table is updated in the same pull request that changes what works. Features that don't exist yet, such as encryption at rest, are never described as existing.
 - **No weakening tests to get green.** A failing check is fixed at the root.
@@ -54,6 +54,7 @@ Data lives in `.brad/brad.db` (git-ignored). Set `BRAD_DATA_DIR` to use another 
 | `packages/agent-factory` | Life map → draft agents; reconciliation on regenerate |
 | `packages/priority-engine` | Explainable ranking and correction suggestions |
 | `packages/policy-engine` | Deterministic allow / deny / confirm with a rule trace |
+| `packages/adapter-inkus` | Inkus mapping, two-way sync, MCP client, in-memory fake |
 | `apps/api` | Localhost-only HTTP API and SQLite store |
 | `apps/studio` | React + Vite interface (EN/PT) |
 | `docs/adr` | Architecture decision records |

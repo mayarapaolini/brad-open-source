@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { demoInbox, type DecisionRecord, type LifeDomainId } from "@brad/domain";
+import { demoInbox, type AgentDefinition, type DecisionRecord, type LifeDomainId } from "@brad/domain";
+import { agentLabel } from "../agentLabel";
 import type { Suggestion } from "@brad/priority-engine";
 import { api } from "../api";
 import { describeSuggestion } from "../suggestions";
@@ -9,7 +10,7 @@ import type { MessageKey } from "../i18n/en";
 // Records are stored as JSON; read them loosely and only for display.
 type Loose = Record<string, unknown>;
 
-export function Audit({ onError }: { onError: (e: unknown) => void }) {
+export function Audit({ onError, agents }: { onError: (e: unknown) => void; agents: AgentDefinition[] }) {
   const { t, lang } = useI18n();
   const [records, setRecords] = useState<DecisionRecord[] | null>(null);
 
@@ -21,6 +22,8 @@ export function Audit({ onError }: { onError: (e: unknown) => void }) {
   }, [onError]);
 
   const agentName = (id: unknown) => {
+    const known = agents.find((a) => a.id === id);
+    if (known) return agentLabel(t, known);
     const domain = String(id ?? "").replace(/^agent-/, "") as LifeDomainId;
     const key = `domain.${domain}` as MessageKey;
     return t(key) === key ? String(id) : t("agents.name", { domain: t(key) });
@@ -45,6 +48,12 @@ export function Audit({ onError }: { onError: (e: unknown) => void }) {
         return input.assumeState || input.assumeGrant ? `${text} ${t("audit.whatIf")}` : text;
       }
       case "lifecycle":
+        if (input.action === "edit") {
+          return t("audit.edit", {
+            agent: agentName(input.agentId),
+            fields: ((input.fields as string[]) ?? []).map((f) => t(`editField.${f}` as MessageKey)).join(", ") || "—",
+          });
+        }
         if (input.action === "regenerate") {
           return t("audit.regenerate", {
             reset: ((result.reset as string[]) ?? []).length,
@@ -78,6 +87,17 @@ export function Audit({ onError }: { onError: (e: unknown) => void }) {
           item: subject,
           expected: t(`tier.${input.expectedTier}` as MessageKey),
           suggestion: suggestion ? describeSuggestion(t, suggestion) : t("correction.noSuggestion"),
+        });
+      }
+      case "sync": {
+        const report = result as { imported?: string[]; updated?: string[]; pushed?: string[]; created?: string[]; overwritten?: unknown[]; errors?: unknown[] };
+        return t("audit.sync", {
+          imported: report.imported?.length ?? 0,
+          updated: report.updated?.length ?? 0,
+          pushed: report.pushed?.length ?? 0,
+          created: report.created?.length ?? 0,
+          overwritten: report.overwritten?.length ?? 0,
+          errors: report.errors?.length ?? 0,
         });
       }
       case "import":

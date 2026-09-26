@@ -9,6 +9,7 @@ import type {
   TransitionCheck,
 } from "@brad/domain";
 import type { ActionRequest, PolicyDecision } from "@brad/policy-engine";
+import type { SyncReport } from "@brad/adapter-inkus";
 import type { RankedItem, Suggestion, Tier } from "@brad/priority-engine";
 
 export class ApiError extends Error {
@@ -60,6 +61,14 @@ export const api = {
     ),
   applyCorrection: (correctionId: number) =>
     call<{ lifeMap: LifeMap; suggestion: Suggestion }>("POST", "/api/corrections/apply", { correctionId }),
+  updateAgent: (agentId: string, patch: Partial<Pick<AgentDefinition, "name" | "goal" | "responsibilities" | "domain" | "actionDomains" | "requestedCapabilities">>) =>
+    call<{ agent: AgentDefinition; grants: ConsentGrant[] }>("POST", "/api/agents/update", { agentId, patch }),
+  inkusStatus: () => call<{ enabled: boolean; lastSync: DecisionRecord | null }>("GET", "/api/adapters/inkus"),
+  inkusSync: () =>
+    call<{ report: SyncReport; decisionId: number; agents: AgentDefinition[]; grants: ConsentGrant[] }>(
+      "POST",
+      "/api/adapters/inkus/sync",
+    ),
   getDecisions: () => call<{ decisions: DecisionRecord[] }>("GET", "/api/decisions"),
   reset: () => call<{ ok: true }>("DELETE", "/api/data"),
 };

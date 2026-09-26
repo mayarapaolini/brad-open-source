@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@brad/adapter-inkus": "workspace:*",
     "@brad/domain": "workspace:*",
     "@brad/policy-engine": "workspace:*",
     "@brad/priority-engine": "workspace:*",
