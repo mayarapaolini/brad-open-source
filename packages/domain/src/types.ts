@@ -61,6 +61,9 @@ export interface DomainAssessment {
   /** How much the area matters to them, 0–10. */
   importance: number;
   goal: string;
+  /** When this assessment was made. A subjective, dated reading, not a permanent fact. */
+  asOf?: string;
+  source?: "self_reported";
 }
 
 export interface Person {

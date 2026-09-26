@@ -5,6 +5,7 @@ import type {
   Capability,
   ConsentGrant,
   DecisionRecord,
+  ImportPlan,
   LifeMap,
   TransitionCheck,
 } from "@brad/domain";
@@ -48,8 +49,20 @@ export const api = {
     call<{ grant: ConsentGrant }>("POST", "/api/grants", { agentId, capability, days }),
   revoke: (grantId: string) => call<{ grant: ConsentGrant }>("POST", "/api/grants/revoke", { grantId }),
   exportData: () => call<BradExport>("GET", "/api/export"),
-  importData: (data: unknown) =>
-    call<{ lifeMap: LifeMap; agents: AgentDefinition[]; grants: ConsentGrant[] }>("POST", "/api/import", data),
+  previewImport: (data: unknown) =>
+    call<{ plan: ImportPlan; hash: string; alreadyImported: boolean }>("POST", "/api/import/preview", data),
+  importData: (data: unknown, options: { timeZone?: string; force?: boolean } = {}) =>
+    call<{ lifeMap: LifeMap; agents: AgentDefinition[]; grants: ConsentGrant[]; snapshotId: number }>("POST", "/api/import", {
+      export: data,
+      ...options,
+    }),
+  snapshots: () => call<{ snapshots: SnapshotInfo[] }>("GET", "/api/snapshots"),
+  restoreSnapshot: (snapshotId: number) =>
+    call<{ lifeMap: LifeMap | null; agents: AgentDefinition[]; grants: ConsentGrant[]; snapshotId: number }>(
+      "POST",
+      "/api/snapshots/restore",
+      { snapshotId },
+    ),
   simulatePriority: () => call<{ ranked: RankedItem[]; decisionId: number }>("POST", "/api/simulate/priority"),
   simulatePolicy: (body: { request: ActionRequest; assumeState?: AgentState; assumeGrant?: boolean; now?: string }) =>
     call<{ decision: PolicyDecision; decisionId: number }>("POST", "/api/simulate/policy", body),
@@ -73,3 +86,11 @@ export const api = {
   getDecisions: () => call<{ decisions: DecisionRecord[] }>("GET", "/api/decisions"),
   reset: () => call<{ ok: true }>("DELETE", "/api/data"),
 };
+
+export interface SnapshotInfo {
+  id: number;
+  createdAt: string;
+  reason: string;
+  agents: number;
+  grants: number;
+}

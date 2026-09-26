@@ -13,7 +13,7 @@
 - [x] local persistence (SQLite)
 - [ ] encryption at rest
 - [x] synthetic demo profile
-- [x] safe import/export (validated JSON; imported active agents arrive paused)
+- [x] safe import/export (validated JSON, diff preview, time-zone confirmation, idempotent, undo; imported active agents arrive paused)
 
 ## Milestone 2 — Agent portfolio
 

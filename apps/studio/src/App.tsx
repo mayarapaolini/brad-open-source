@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { emptyLifeMap, type AgentDefinition, type ConsentGrant, type LifeMap } from "@brad/domain";
+import { emptyLifeMap, type AgentDefinition, type ConsentGrant, type ImportPlan, type LifeMap } from "@brad/domain";
+import { ImportPreview } from "./ImportPreview";
 import { api, ApiError } from "./api";
 import { useI18n, type Lang } from "./i18n";
 import { Agents } from "./steps/Agents";
@@ -82,18 +83,49 @@ export function App() {
     }
   };
 
+  const [pendingImport, setPendingImport] = useState<{ data: unknown; plan: ImportPlan; alreadyImported: boolean } | null>(null);
+  const [undoSnapshot, setUndoSnapshot] = useState<number | null>(null);
+
+  const applyState = (res: { lifeMap: LifeMap | null; agents: AgentDefinition[]; grants: ConsentGrant[] }) => {
+    setLifeMap(res.lifeMap ?? emptyLifeMap());
+    setAgents(res.agents);
+    setGrants(res.grants);
+    setDirty(false);
+    setError(null);
+    setEpoch((n) => n + 1);
+  };
+
   const importData = async (file: File | undefined) => {
-    if (!file || !window.confirm(t("app.importConfirm"))) return;
+    if (!file) return;
     try {
-      const res = await api.importData(JSON.parse(await file.text()));
-      setLifeMap(res.lifeMap);
-      setAgents(res.agents);
-      setGrants(res.grants);
-      setDirty(false);
+      const data = JSON.parse(await file.text());
+      const preview = await api.previewImport(data);
+      setPendingImport({ data, plan: preview.plan, alreadyImported: preview.alreadyImported });
       setError(null);
-      setEpoch((n) => n + 1);
     } catch (e) {
       report(e instanceof SyntaxError ? new ApiError(t("app.importInvalid")) : e);
+    }
+  };
+
+  const confirmImport = async (timeZone: string | undefined) => {
+    if (!pendingImport) return;
+    try {
+      const res = await api.importData(pendingImport.data, { timeZone, force: pendingImport.alreadyImported });
+      applyState(res);
+      setUndoSnapshot(res.snapshotId);
+      setPendingImport(null);
+    } catch (e) {
+      report(e);
+    }
+  };
+
+  const restoreSnapshot = async (snapshotId: number) => {
+    try {
+      const res = await api.restoreSnapshot(snapshotId);
+      applyState(res);
+      setUndoSnapshot(null);
+    } catch (e) {
+      report(e);
     }
   };
 
@@ -195,6 +227,23 @@ export function App() {
         </div>
       )}
 
+      {pendingImport && (
+        <ImportPreview
+          plan={pendingImport.plan}
+          alreadyImported={pendingImport.alreadyImported}
+          onApply={confirmImport}
+          onCancel={() => setPendingImport(null)}
+        />
+      )}
+      {undoSnapshot !== null && (
+        <div className="undo" role="status">
+          {t("importPreview.applied")}{" "}
+          <button className="link" onClick={() => restoreSnapshot(undoSnapshot)} data-testid="import-undo">
+            {t("importPreview.undo")}
+          </button>
+        </div>
+      )}
+
       <main>
         {step === "diagnostic" && <Diagnostic lifeMap={lifeMap} onChange={edit} onNext={() => save("lifeMap")} />}
         {step === "lifeMap" && <LifeMapEditor lifeMap={lifeMap} onChange={edit} onNext={() => save("agents")} />}
@@ -221,7 +270,7 @@ export function App() {
             onEditLifeMap={() => setStep("lifeMap")}
           />
         )}
-        {step === "audit" && <Audit key={epoch} onError={report} agents={agents} />}
+        {step === "audit" && <Audit key={epoch} onError={report} agents={agents} onRestore={restoreSnapshot} />}
       </main>
     </div>
   );

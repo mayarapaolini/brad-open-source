@@ -43,6 +43,9 @@ export function validateLifeMap(input: unknown): string[] {
       if (!isScore(a?.satisfaction)) errors.push(`assessments[${i}].satisfaction must be an integer 0–10`);
       if (!isScore(a?.importance)) errors.push(`assessments[${i}].importance must be an integer 0–10`);
       if (typeof a?.goal !== "string") errors.push(`assessments[${i}].goal must be a string`);
+      if (a?.asOf !== undefined && (typeof a.asOf !== "string" || Number.isNaN(Date.parse(a.asOf))))
+        errors.push(`assessments[${i}].asOf must be a date`);
+      if (a?.source !== undefined && a.source !== "self_reported") errors.push(`assessments[${i}].source is unknown`);
     }
   }
 

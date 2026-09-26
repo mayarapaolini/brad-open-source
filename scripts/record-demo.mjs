@@ -203,6 +203,34 @@ try {
   await page.evaluate(() => window.scrollTo(0, 0));
   await capture(page, 2600);
 
+  // Import: preview the diff, fix a UTC time zone, apply, then undo.
+  const exported = await (await fetch(`${BASE}/api/export`)).json();
+  exported.lifeMap.boundaries.timeZone = "UTC";
+  exported.lifeMap.assessments[0].satisfaction = 9;
+  const importFile = join(dataDir, "brad-export-utc.json");
+  writeFileSync(importFile, JSON.stringify(exported));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.getByTestId("import").setInputFiles(importFile);
+  await page.getByTestId("import-preview").waitFor();
+  assert(
+    (await page.getByTestId("import-warning-timezone_utc").count()) === 1 &&
+      (await page.getByTestId("import-preview").innerText()).includes("1 area assessments change"),
+    "an import is previewed first and flags a UTC time zone",
+  );
+  await page.getByTestId("import-timezone").selectOption("America/Sao_Paulo");
+  await capture(page, 3000);
+  await page.getByTestId("import-apply").click();
+  await page.getByTestId("import-undo").waitFor();
+  const afterImport = await (await fetch(`${BASE}/api/lifemap`)).json();
+  assert(
+    afterImport.lifeMap.boundaries.timeZone === "America/Sao_Paulo" && afterImport.lifeMap.assessments[0].satisfaction === 9,
+    "the import applies with the chosen time zone",
+  );
+  await page.getByTestId("import-undo").click();
+  await page.getByTestId("import-undo").waitFor({ state: "detached" });
+  const afterUndo = await (await fetch(`${BASE}/api/lifemap`)).json();
+  assert(afterUndo.lifeMap.assessments[0].satisfaction === 5, "undo restores the previous version");
+
   await page.getByTestId("lang-pt").click();
   await page.getByTestId("step-simulation").click();
   await page.evaluate(() => window.scrollTo(0, 0));

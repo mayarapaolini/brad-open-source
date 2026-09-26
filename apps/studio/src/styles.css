@@ -226,3 +226,8 @@ button.link.edit { padding-left: 0; }
 .inkus { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .inkus-off { max-width: 520px; }
 .links { display: flex; gap: 12px; margin: 4px 0; }
+
+/* Import preview and undo */
+.import-preview { background: var(--panel); border: 2px solid var(--accent); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; }
+.import-preview ul { margin: 6px 0 10px; }
+.undo { background: var(--ok-soft); color: var(--ok); padding: 8px 14px; border-radius: var(--radius); margin-bottom: 12px; }
