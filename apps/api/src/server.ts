@@ -5,6 +5,16 @@ import { extname, join, normalize, resolve } from "node:path";
 import { exportAgentToInkus, syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
 import { generateDraftAgents, reconcileAgents } from "@brad/agent-factory";
 import {
+  currentAnswer,
+  estimateQuestions,
+  planDomain,
+  synthesize,
+  toAnswer,
+  validateAnswerInput,
+  type AnswerInput,
+  type Verdict,
+} from "@brad/discovery";
+import {
   AGENT_STATES,
   CAPABILITIES,
   LIFE_DOMAINS,
@@ -86,6 +96,22 @@ function requireLifeMap(store: Store): LifeMap {
   const map = store.getLifeMap();
   if (!map) throw new HttpError(409, "no life map yet: complete the diagnostic or load the demo profile");
   return map;
+}
+
+function discoveryState(store: Store) {
+  const map = requireLifeMap(store);
+  const answers = store.getAnswers();
+  const feedback = store.getFeedback();
+  const verdicts = Object.fromEntries(Object.entries(feedback).map(([id, f]) => [id, f.verdict]));
+  return {
+    estimate: estimateQuestions(map.assessments),
+    domains: map.assessments.map((a) => {
+      const plan = planDomain(a, answers);
+      return { domain: a.domain, path: plan.path, done: plan.done, total: plan.total, next: plan.next, closed: plan.closed };
+    }),
+    answers: answers.filter((a) => a.status !== "stale"),
+    synthesis: synthesize(map, answers, verdicts).map((item) => ({ ...item, correction: feedback[item.id]?.correction ?? null })),
+  };
 }
 
 function parseExport(input: unknown): BradExport {
@@ -494,6 +520,49 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
       { before: { score: ranked.score, tier: ranked.tier }, after: stored.projected },
     );
     return { lifeMap: store.getLifeMap(), suggestion: stored };
+  },
+
+  "GET /api/discovery": (_req, store) => discoveryState(store),
+
+  "POST /api/discovery/answers": async (req, store) => {
+    requireLifeMap(store);
+    const input = (await readJson(req)) as AnswerInput;
+    const errors = validateAnswerInput(input);
+    if (errors.length > 0) throw new HttpError(400, errors[0]!, errors);
+    const answers = store.getAnswers();
+    // Editing keeps history: the previous answer becomes stale instead of disappearing.
+    const previous = currentAnswer(answers, input.domain, input.questionId);
+    const now = new Date().toISOString();
+    const asOf = previous && previous.asOf >= now ? new Date(Date.parse(previous.asOf) + 1).toISOString() : now;
+    if (previous) store.saveAnswer({ ...previous, status: "stale" });
+    const answer = toAnswer(input, `ans-${randomUUID()}`, asOf);
+    store.saveAnswer(previous ? { ...answer, syncToInkus: previous.syncToInkus } : answer);
+    return discoveryState(store);
+  },
+
+  "POST /api/discovery/answers/sync": async (req, store) => {
+    const body = (await readJson(req)) as { answerId?: string; syncToInkus?: unknown };
+    const answer = store.getAnswers().find((a) => a.id === body.answerId);
+    if (!answer) throw new HttpError(404, "answer_not_found");
+    if (typeof body.syncToInkus !== "boolean") throw new HttpError(400, "invalid_request");
+    store.saveAnswer({ ...answer, syncToInkus: body.syncToInkus });
+    store.addDecision("discovery", { action: "sync_consent", answerId: answer.id, questionId: answer.questionId }, { syncToInkus: body.syncToInkus });
+    return discoveryState(store);
+  },
+
+  "POST /api/discovery/synthesis": async (req, store) => {
+    const body = (await readJson(req)) as { itemId?: string; verdict?: Verdict; correction?: string };
+    const state = discoveryState(store);
+    const item = state.synthesis.find((i) => i.id === body.itemId);
+    if (!item) throw new HttpError(404, "item_not_found");
+    if (!["yes", "partly", "no"].includes(body.verdict ?? "")) throw new HttpError(400, "invalid_verdict");
+    const correction = typeof body.correction === "string" ? body.correction.trim().slice(0, 2000) || null : null;
+    store.setFeedback(item.id, body.verdict!, correction);
+    // A confirmation turns the underlying answers into user-confirmed facts; a correction marks them corrected.
+    const status = body.verdict === "yes" ? "user_confirmed" : "corrected";
+    for (const answer of store.getAnswers()) if (item.basis.includes(answer.id)) store.saveAnswer({ ...answer, status });
+    store.addDecision("discovery", { action: "confirm", itemId: item.id, verdict: body.verdict }, { basis: item.basis, corrected: correction !== null });
+    return discoveryState(store);
   },
 
   "GET /api/decisions": (_req, store) => ({ decisions: store.listDecisions() }),

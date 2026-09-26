@@ -6,10 +6,11 @@ import { useI18n, type Lang } from "./i18n";
 import { Agents } from "./steps/Agents";
 import { Audit } from "./steps/Audit";
 import { Diagnostic } from "./steps/Diagnostic";
+import { Discovery } from "./steps/Discovery";
 import { LifeMapEditor } from "./steps/LifeMapEditor";
 import { Simulation } from "./steps/Simulation";
 
-const STEPS = ["diagnostic", "lifeMap", "agents", "simulation", "audit"] as const;
+const STEPS = ["diagnostic", "discovery", "lifeMap", "agents", "simulation", "audit"] as const;
 export type Step = (typeof STEPS)[number];
 
 export function App() {
@@ -245,7 +246,8 @@ export function App() {
       )}
 
       <main>
-        {step === "diagnostic" && <Diagnostic lifeMap={lifeMap} onChange={edit} onNext={() => save("lifeMap")} />}
+        {step === "diagnostic" && <Diagnostic lifeMap={lifeMap} onChange={edit} onNext={() => save("discovery")} />}
+        {step === "discovery" && <Discovery key={epoch} onError={report} onNext={() => setStep("lifeMap")} />}
         {step === "lifeMap" && <LifeMapEditor lifeMap={lifeMap} onChange={edit} onNext={() => save("agents")} />}
         {step === "agents" && (
           <Agents

@@ -1,6 +1,6 @@
 # ADR 0003: Inkus as an editable mirror of agent definitions
 
-- **Status:** accepted
+- **Status:** accepted, extended by [ADR 0004](0004-life-map-sync-consent.md) for life-map data
 - **Date:** 2026-09-26
 - **Amends:** [ADR 0002](0002-local-first-architecture.md) (Inkus is no longer publish-only)
 - **Code:** `packages/adapter-inkus`, `apps/api/src/server.ts` (`/api/adapters/inkus/sync`, `/api/agents/update`)

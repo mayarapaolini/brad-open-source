@@ -1,9 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { Answer, Verdict } from "@brad/discovery";
 import { normalizeAgent, type AgentDefinition, type ConsentGrant, type DecisionRecord, type LifeMap } from "@brad/domain";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -36,6 +37,20 @@ const MIGRATIONS: Record<number, string> = {
       created_at TEXT NOT NULL,
       reason TEXT NOT NULL,
       body TEXT NOT NULL
+    );
+  `,
+  3: `
+    CREATE TABLE answers (
+      id TEXT PRIMARY KEY,
+      domain TEXT NOT NULL,
+      as_of TEXT NOT NULL,
+      body TEXT NOT NULL
+    );
+    CREATE TABLE synthesis_feedback (
+      item_id TEXT PRIMARY KEY,
+      verdict TEXT NOT NULL,
+      correction TEXT,
+      updated_at TEXT NOT NULL
     );
   `,
 };
@@ -184,6 +199,35 @@ export class Store {
     }));
   }
 
+  /** Discovery answers, oldest first. Edited answers stay, marked stale. */
+  getAnswers(): Answer[] {
+    const rows = this.db.prepare("SELECT body FROM answers ORDER BY as_of, id").all() as { body: string }[];
+    return rows.map((r) => JSON.parse(r.body) as Answer);
+  }
+
+  saveAnswer(answer: Answer): void {
+    this.db
+      .prepare("INSERT INTO answers (id, domain, as_of, body) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET body = excluded.body")
+      .run(answer.id, answer.domain, answer.asOf, JSON.stringify(answer));
+  }
+
+  getFeedback(): Record<string, { verdict: Verdict; correction: string | null }> {
+    const rows = this.db.prepare("SELECT item_id, verdict, correction FROM synthesis_feedback").all() as {
+      item_id: string;
+      verdict: Verdict;
+      correction: string | null;
+    }[];
+    return Object.fromEntries(rows.map((r) => [r.item_id, { verdict: r.verdict, correction: r.correction }]));
+  }
+
+  setFeedback(itemId: string, verdict: Verdict, correction: string | null): void {
+    this.db
+      .prepare(
+        "INSERT INTO synthesis_feedback (item_id, verdict, correction, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET verdict = excluded.verdict, correction = excluded.correction, updated_at = excluded.updated_at",
+      )
+      .run(itemId, verdict, correction, new Date().toISOString());
+  }
+
   /** Saves the current life map, agents and grants so a change can be undone. */
   createSnapshot(reason: string): number {
     const body: SnapshotBody = { lifeMap: this.getLifeMap(), agents: this.getAgents(), grants: this.getGrants() };
@@ -225,7 +269,7 @@ export class Store {
   /** Deletes every record. Used by "reset" in Studio. */
   reset(): void {
     this.transaction(() => {
-      for (const table of ["life_map", "agents", "grants", "decisions", "snapshots"]) this.db.exec(`DELETE FROM ${table}`);
+      for (const table of ["life_map", "agents", "grants", "decisions", "snapshots", "answers", "synthesis_feedback"]) this.db.exec(`DELETE FROM ${table}`);
     });
   }
 
