@@ -1,18 +1,30 @@
 {
   "name": "brad-open-source",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Local-first control plane for personal multi-agent systems.",
+  "description": "Local-first control plane that turns priorities, relationships and constraints into a governed portfolio of AI agents.",
   "license": "Apache-2.0",
+  "type": "module",
   "packageManager": "pnpm@10.17.1",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
+    "dev": "concurrently -n api,studio -c blue,magenta \"pnpm --filter @brad/api dev\" \"pnpm --filter @brad/studio dev\"",
     "build": "pnpm -r --if-present build",
-    "dev": "pnpm --filter @brad/studio dev",
-    "lint": "pnpm -r --if-present lint",
-    "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "start": "pnpm --filter @brad/api start",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "vitest run",
+    "demo:gif": "node scripts/record-demo.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.4",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.11.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
   }
 }
