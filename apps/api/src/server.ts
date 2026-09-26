@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
+import { syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
 import { generateDraftAgents, reconcileAgents } from "@brad/agent-factory";
 import {
   AGENT_STATES,
@@ -15,6 +16,7 @@ import {
   isGrantValid,
   validateExport,
   validateLifeMap,
+  type AgentDefinition,
   type AgentState,
   type BradExport,
   type Capability,
@@ -90,6 +92,72 @@ function currentTime(value: unknown): string {
 const DAY = 24 * 60 * 60 * 1000;
 const TIERS: readonly Tier[] = ["now", "today", "later"];
 const MAX_NOTE_LENGTH = 500;
+const MAX_NAME_LENGTH = 120;
+const MAX_GOAL_LENGTH = 2000;
+const MAX_RESPONSIBILITIES = 30;
+
+const DOMAIN_NAMES: Record<string, string> = {
+  family: "Family",
+  work: "Work",
+  study: "Study",
+  health: "Health",
+  finances: "Finances",
+  home: "Home",
+  social: "Social",
+  leisure: "Leisure",
+  growth: "Growth",
+  contribution: "Contribution",
+};
+
+/** Name used when an agent is created in Inkus and has no name of its own. */
+function displayName(agent: AgentDefinition): string {
+  return agent.name?.trim() || `Brad ${agent.domain ? DOMAIN_NAMES[agent.domain] : "Agent"}`;
+}
+
+interface AgentPatch {
+  name?: string;
+  goal?: string;
+  responsibilities?: string[];
+  domain?: string | null;
+  actionDomains?: string[];
+  requestedCapabilities?: string[];
+}
+
+function parseAgentPatch(input: unknown): AgentPatch {
+  const p = (input ?? {}) as AgentPatch;
+  const bad = (code: string) => new HttpError(400, code);
+  if (p.name !== undefined && (typeof p.name !== "string" || p.name.length > MAX_NAME_LENGTH)) throw bad("invalid_name");
+  if (p.goal !== undefined && (typeof p.goal !== "string" || p.goal.length > MAX_GOAL_LENGTH)) throw bad("invalid_goal");
+  if (
+    p.responsibilities !== undefined &&
+    (!Array.isArray(p.responsibilities) ||
+      p.responsibilities.length > MAX_RESPONSIBILITIES ||
+      !p.responsibilities.every((r) => typeof r === "string" && r.length <= MAX_NAME_LENGTH * 2))
+  )
+    throw bad("invalid_responsibilities");
+  if (p.domain !== undefined && p.domain !== null && !LIFE_DOMAINS.includes(p.domain as never)) throw bad("unknown_domain");
+  if (p.actionDomains !== undefined && (!Array.isArray(p.actionDomains) || !p.actionDomains.every((d) => LIFE_DOMAINS.includes(d as never))))
+    throw bad("unknown_domain");
+  if (
+    p.requestedCapabilities !== undefined &&
+    (!Array.isArray(p.requestedCapabilities) || !p.requestedCapabilities.every((c) => CAPABILITIES.includes(c as never)))
+  )
+    throw bad("unknown_capability");
+  return p;
+}
+
+/** Revokes every grant the agent no longer needs; returns the revoked ids. */
+function revokeUnneeded(store: Store, agent: AgentDefinition, now: string, cause: string): string[] {
+  const revoked: string[] = [];
+  for (const grant of store.getGrants()) {
+    if (grant.agentId !== agent.id || grant.revokedAt !== null) continue;
+    if (agent.state !== "archived" && agent.requestedCapabilities.includes(grant.capability)) continue;
+    store.saveGrant({ ...grant, revokedAt: now });
+    store.addDecision("grant", { action: "revoke", grantId: grant.id, agentId: grant.agentId, capability: grant.capability, cause }, { ok: true });
+    revoked.push(grant.id);
+  }
+  return revoked;
+}
 
 interface CorrectionInput {
   action: "feedback";
@@ -133,7 +201,8 @@ function parseActionRequest(input: unknown): ActionRequest {
 
 type Handler = (req: IncomingMessage, store: Store) => Promise<unknown> | unknown;
 
-const routes: Record<string, Handler> = {
+function makeRoutes(options: ServerOptions): Record<string, Handler> {
+  return {
   "GET /api/health": () => ({ ok: true }),
 
   "GET /api/lifemap": (_req, store) => ({ lifeMap: store.getLifeMap() }),
@@ -211,7 +280,7 @@ const routes: Record<string, Handler> = {
       id: `g-${randomUUID()}`,
       agentId: agent.id,
       capability,
-      purpose: agent.goal || agent.domain,
+      purpose: agent.goal || agent.name || agent.domain || agent.id,
       issuedAt: now,
       expiresAt: new Date(Date.parse(now) + days * DAY).toISOString(),
       revokedAt: null,
@@ -364,7 +433,79 @@ const routes: Record<string, Handler> = {
     store.reset();
     return { ok: true };
   },
-};
+
+  "POST /api/agents/update": async (req, store) => {
+    const body = (await readJson(req)) as { agentId?: string; patch?: unknown };
+    const agent = store.getAgents().find((a) => a.id === body.agentId);
+    if (!agent) throw new HttpError(404, "agent_not_found");
+    if (agent.state === "archived") throw new HttpError(409, "agent_archived");
+    const patch = parseAgentPatch(body.patch);
+    const forbidden = requireLifeMap(store).boundaries.forbiddenCapabilities;
+    const wanted = (patch.requestedCapabilities ?? [...agent.requestedCapabilities, ...agent.excludedByBoundary]) as AgentDefinition["requestedCapabilities"];
+    const domain = patch.domain === undefined ? agent.domain : (patch.domain as AgentDefinition["domain"]);
+    const next: AgentDefinition = {
+      ...agent,
+      name: patch.name?.trim() ?? agent.name,
+      goal: patch.goal ?? agent.goal,
+      responsibilities: patch.responsibilities?.map((r) => r.trim()).filter(Boolean) ?? agent.responsibilities,
+      domain,
+      actionDomains: domain ? [] : ((patch.actionDomains ?? agent.actionDomains ?? []) as AgentDefinition["actionDomains"]),
+      requestedCapabilities: [...new Set(wanted.filter((c) => !forbidden.includes(c)))],
+      excludedByBoundary: [...new Set(wanted.filter((c) => forbidden.includes(c)))],
+      revision: (agent.revision ?? 0) + 1,
+    };
+    store.saveAgent(next);
+    const now = new Date().toISOString();
+    const revoked = revokeUnneeded(store, next, now, "edit");
+    const fields = (["name", "goal", "responsibilities", "domain", "actionDomains", "requestedCapabilities"] as const).filter(
+      (f) => JSON.stringify(agent[f]) !== JSON.stringify(next[f]),
+    );
+    store.addDecision("lifecycle", { action: "edit", agentId: agent.id, fields }, { ok: true, revokedGrants: revoked });
+    return { agent: next, grants: store.getGrants() };
+  },
+
+  "GET /api/adapters/inkus": (_req, store) => ({
+    enabled: Boolean(options.inkus),
+    lastSync: store.listDecisions(200).find((d) => d.kind === "sync") ?? null,
+  }),
+
+  "POST /api/adapters/inkus/sync": async (_req, store) => {
+    if (!options.inkus) throw new HttpError(409, "adapter_disabled");
+    const map = requireLifeMap(store);
+    const now = new Date().toISOString();
+    let client: InkusClient & { close?: () => Promise<void> };
+    try {
+      client = await options.inkus();
+    } catch (error) {
+      throw new HttpError(502, "inkus_unreachable", [error instanceof Error ? error.message : String(error)]);
+    }
+    try {
+      const result = await syncWithInkus({
+        agents: store.getAgents(),
+        grants: store.getGrants(),
+        forbidden: map.boundaries.forbiddenCapabilities,
+        client,
+        now,
+        displayName,
+      });
+      store.replaceAgents(result.agents);
+      const revokeIds = new Set(result.revokeGrantIds);
+      for (const grant of store.getGrants()) {
+        if (!revokeIds.has(grant.id)) continue;
+        store.saveGrant({ ...grant, revokedAt: now });
+        store.addDecision("grant", { action: "revoke", grantId: grant.id, agentId: grant.agentId, capability: grant.capability, cause: "inkus" }, { ok: true });
+      }
+      const record = store.addDecision("sync", { source: "inkus" }, result.report);
+      return { report: result.report, decisionId: record.id, agents: store.getAgents(), grants: store.getGrants() };
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(502, "inkus_sync_failed", [error instanceof Error ? error.message : String(error)]);
+    } finally {
+      await client.close?.();
+    }
+  },
+  };
+}
 
 function serveStatic(res: ServerResponse, root: string, urlPath: string): boolean {
   const safe = normalize(decodeURIComponent(urlPath)).replace(/^([/\\])+/, "");
@@ -380,9 +521,12 @@ function serveStatic(res: ServerResponse, root: string, urlPath: string): boolea
 export interface ServerOptions {
   /** Directory with the built Studio. Served when present. */
   staticDir?: string;
+  /** Opens a connection to Inkus for one sync. Absent means the adapter is disabled. */
+  inkus?: () => Promise<InkusClient & { close?: () => Promise<void> }>;
 }
 
 export function createApiServer(store: Store, options: ServerOptions = {}): Server {
+  const routes = makeRoutes(options);
   return createServer(async (req, res) => {
     try {
       // Refuse requests addressed to anything but this machine (DNS-rebinding guard).
