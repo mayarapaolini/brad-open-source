@@ -115,6 +115,10 @@ export function Audit({
           errors: report.errors?.length ?? 0,
         });
       }
+      case "discovery":
+        return input.action === "sync_consent"
+          ? t((result.syncToInkus ? "audit.syncConsentOn" : "audit.syncConsentOff") as MessageKey)
+          : t("audit.synthesis", { item: String(input.itemId), verdict: t(`discovery.verdict.${input.verdict}` as MessageKey) });
       case "import":
         if (input.action === "restore") return t("audit.restore", { id: Number(input.snapshotId) });
         return t("audit.import", { agents: Number(result.agents ?? 0), grants: Number(result.grants ?? 0) });

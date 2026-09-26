@@ -6,11 +6,13 @@ import type {
   ConsentGrant,
   DecisionRecord,
   ImportPlan,
+  LifeDomainId,
   LifeMap,
   TransitionCheck,
 } from "@brad/domain";
 import type { ActionRequest, PolicyDecision } from "@brad/policy-engine";
 import type { SyncReport } from "@brad/adapter-inkus";
+import type { Answer, AnswerInput, DomainPath, Question, SynthesisItem, Verdict } from "@brad/discovery";
 import type { RankedItem, Suggestion, Tier } from "@brad/priority-engine";
 
 export class ApiError extends Error {
@@ -83,6 +85,12 @@ export const api = {
       "/api/adapters/inkus/sync",
     ),
   inkusExport: (agentId: string) => call<{ agent: AgentDefinition }>("POST", "/api/adapters/inkus/export", { agentId }),
+  discovery: () => call<DiscoveryState>("GET", "/api/discovery"),
+  answer: (input: AnswerInput) => call<DiscoveryState>("POST", "/api/discovery/answers", input),
+  confirmSynthesis: (itemId: string, verdict: Verdict, correction?: string) =>
+    call<DiscoveryState>("POST", "/api/discovery/synthesis", { itemId, verdict, correction }),
+  setAnswerSync: (answerId: string, syncToInkus: boolean) =>
+    call<DiscoveryState>("POST", "/api/discovery/answers/sync", { answerId, syncToInkus }),
   getDecisions: () => call<{ decisions: DecisionRecord[] }>("GET", "/api/decisions"),
   reset: () => call<{ ok: true }>("DELETE", "/api/data"),
 };
@@ -93,4 +101,11 @@ export interface SnapshotInfo {
   reason: string;
   agents: number;
   grants: number;
+}
+
+export interface DiscoveryState {
+  estimate: number;
+  domains: { domain: LifeDomainId; path: DomainPath; done: number; total: number; next: Question | null; closed: boolean }[];
+  answers: Answer[];
+  synthesis: (SynthesisItem & { correction: string | null })[];
 }

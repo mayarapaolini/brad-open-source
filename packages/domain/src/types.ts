@@ -175,7 +175,7 @@ export interface IncomingItem {
 
 export interface DecisionRecord {
   id: number;
-  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction" | "sync";
+  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction" | "sync" | "discovery";
   createdAt: string;
   input: unknown;
   result: unknown;

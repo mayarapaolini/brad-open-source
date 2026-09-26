@@ -76,6 +76,25 @@ try {
   await page.waitForSelector("text=Saved locally");
   await capture(page, 2200);
 
+  // Discovery: an adaptive question with "Outra resposta", a skip, and a confirmed synthesis.
+  await page.getByTestId("step-discovery").click();
+  await page.getByTestId("discovery-domain-health").click();
+  const healthQuestion = page.getByTestId("question");
+  assert((await healthQuestion.getAttribute("data-question")) === "meaning", "a hard, important area starts with what it means");
+  await page.getByTestId("option-other").check();
+  await page.getByTestId("other-text").fill("Sleep before midnight on weekdays");
+  await page.getByTestId("answer-submit").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="question"]')?.getAttribute("data-question") === "barrier");
+  assert(true, "'Outra resposta' with free text is accepted and the next question is about barriers");
+  await page.getByTestId("answer-skip").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="question"]')?.getAttribute("data-question") === "competence");
+  const synth = page.getByTestId("synth-health:priority");
+  assert((await synth.innerText()).includes("Sleep before midnight on weekdays"), "the synthesis restates the owner's own words");
+  await synth.getByTestId("synth-yes").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="synth-health:priority"]')?.textContent?.includes("confirmed"));
+  assert(true, "the owner confirms the synthesis");
+  await capture(page, 3000);
+
   await page.getByTestId("step-lifeMap").click();
   await capture(page, 1800);
 
