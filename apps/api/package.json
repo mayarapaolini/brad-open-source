@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./store": "./src/store.ts",
+    "./snapshot": "./src/snapshot.ts",
+    "./config": "./src/config.ts"
+  },
   "scripts": {
     "dev": "node --disable-warning=ExperimentalWarning --import tsx --watch src/main.ts",
     "start": "node --disable-warning=ExperimentalWarning --import tsx src/main.ts",

@@ -57,6 +57,7 @@ Data lives in `.brad/brad.db` (git-ignored). Set `BRAD_DATA_DIR` to use another 
 | `packages/discovery` | Question catalogs (built-in and parsed from Inkus), adaptive discovery engine, synthesis |
 | `packages/secretary` | Proposals, focus plan (≤3, one protected area), owner-control metrics |
 | `packages/adapter-inkus` | Inkus mapping, agent and answer sync, MCP client, in-memory fake |
-| `apps/api` | Localhost-only HTTP API and SQLite store |
+| `apps/api` | Localhost-only HTTP API, SQLite store, export/import rules shared with the CLI |
+| `apps/cli` | `pnpm brad …`: validate, export, import, doctor, read-only Inkus check |
 | `apps/studio` | React + Vite interface (EN/PT) |
 | `docs/adr` | Architecture decision records |

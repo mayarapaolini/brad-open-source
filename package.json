@@ -17,6 +17,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "vitest run",
     "test:e2e": "node scripts/record-demo.mjs --no-gif",
+    "brad": "pnpm --silent --filter @brad/cli brad",
     "demo:gif": "node scripts/record-demo.mjs"
   },
   "devDependencies": {

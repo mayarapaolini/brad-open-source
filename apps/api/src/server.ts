@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   agencyMetrics,
   buildShareSummary,
@@ -31,20 +31,14 @@ import {
   AGENT_STATES,
   CAPABILITIES,
   LIFE_DOMAINS,
-  EXPORT_FORMAT,
   checkTransition,
-  datedAssessments,
-  planImport,
-  withTimeZone,
   demoGrantsAt,
   demoInbox,
   demoLifeMap,
   isGrantValid,
-  validateExport,
   validateLifeMap,
   type AgentDefinition,
   type AgentState,
-  type BradExport,
   type Capability,
   type LifeContext,
   type LifeDomainId,
@@ -61,7 +55,19 @@ import {
   type Suggestion,
   type Tier,
 } from "@brad/priority-engine";
+import { TransferError, exportData, importData, previewImport } from "./snapshot";
 import type { RestoreScope, Store } from "./store";
+
+/** Runs a shared export/import rule and maps its error codes to HTTP statuses. */
+function transfer<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (!(error instanceof TransferError)) throw error;
+    const status = error.code === "already_imported" || error.code === "needs_timezone" || error.code === "no_life_map" ? 409 : 400;
+    throw new HttpError(status, error.code, error.details);
+  }
+}
 
 const MAX_BODY_BYTES = 1_000_000;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -188,31 +194,6 @@ function secretaryState(store: Store) {
     // The weekly review is optional: it is offered, never pushed, once a week at most.
     weeklyDue: !lastCheckin || Date.parse(now) - Date.parse(lastCheckin) >= WEEK,
   };
-}
-
-function parseExport(input: unknown): BradExport {
-  const errors = validateExport(input);
-  if (errors.length > 0) throw new HttpError(400, "invalid_export", errors);
-  return input as BradExport;
-}
-
-/** Identity of an export's content (not its timestamp), so the same data is never applied twice by accident. */
-function contentHash(data: BradExport): string {
-  return createHash("sha256").update(JSON.stringify([data.lifeMap, data.agents, data.grants])).digest("hex");
-}
-
-function lastImportHash(store: Store): string | null {
-  const last = store.listDecisions(500).find((d) => d.kind === "import" && (d.input as { hash?: string }).hash);
-  return last ? ((last.input as { hash: string }).hash ?? null) : null;
-}
-
-function isValidTimeZone(zone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: zone });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function currentTime(value: unknown): string {
@@ -436,50 +417,24 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
   },
 
   "GET /api/export": (_req, store) => {
-    const snapshot: BradExport = {
-      format: EXPORT_FORMAT,
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      lifeMap: requireLifeMap(store),
-      agents: store.getAgents(),
-      grants: store.getGrants(),
-    };
-    return snapshot;
+    requireLifeMap(store);
+    return transfer(() => exportData(store));
   },
 
   "POST /api/import/preview": async (req, store) => {
-    const data = parseExport(await readJson(req));
-    const plan = planImport({ lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants() }, data);
-    const hash = contentHash(data);
-    return { plan, hash, alreadyImported: lastImportHash(store) === hash };
+    const input = await readJson(req);
+    return transfer(() => previewImport(store, input));
   },
 
   "POST /api/import": async (req, store) => {
     const body = (await readJson(req)) as { export?: unknown; timeZone?: unknown; force?: unknown } & Record<string, unknown>;
     // Older clients post the export itself; newer ones wrap it with options.
     const wrapped = body.export !== undefined;
-    const data = parseExport(wrapped ? body.export : body);
-    const hash = contentHash(data);
-    if (body.force !== true && lastImportHash(store) === hash) throw new HttpError(409, "already_imported");
-
-    const fromZone = data.lifeMap.boundaries.timeZone;
-    let lifeMap = datedAssessments(data.lifeMap, data.exportedAt);
-    if (typeof body.timeZone === "string") {
-      if (!isValidTimeZone(body.timeZone)) throw new HttpError(400, "invalid_time_zone");
-      lifeMap = withTimeZone(lifeMap, body.timeZone);
-    } else if (fromZone === "UTC") {
-      // UTC in a personal export is almost always a configuration mistake: ask before storing it.
-      throw new HttpError(409, "needs_timezone");
-    }
-
-    const snapshotId = store.createSnapshot("before_import");
-    // An imported agent never starts acting on its own: active agents arrive paused.
-    const agents = data.agents.map((a) => (a.state === "active" ? { ...a, state: "paused" as const } : a));
-    store.replaceAll(lifeMap, agents, data.grants);
-    store.addDecision(
-      "import",
-      { exportedAt: data.exportedAt, hash, snapshotId, timeZoneFrom: fromZone, timeZoneTo: lifeMap.boundaries.timeZone },
-      { agents: agents.length, grants: data.grants.length },
+    const { snapshotId } = transfer(() =>
+      importData(store, wrapped ? body.export : body, {
+        timeZone: typeof body.timeZone === "string" ? body.timeZone : undefined,
+        force: body.force === true,
+      }),
     );
     return { lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants(), snapshotId };
   },

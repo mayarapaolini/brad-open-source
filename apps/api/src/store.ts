@@ -355,6 +355,15 @@ export class Store {
     });
   }
 
+  /** The schema version this database has been migrated to. */
+  schemaVersion(): number {
+    return Number((this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
+  }
+
+  countDecisions(): number {
+    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM decisions").get() as { n: number }).n);
+  }
+
   /** Deletes every record. Used by "reset" in Studio. */
   reset(): void {
     this.transaction(() => {

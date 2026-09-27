@@ -12,6 +12,7 @@
 - [x] editable scores, importance, goals, people, and boundaries
 - [x] local persistence (SQLite)
 - [ ] encryption at rest
+- [x] CLI: validate, export, import (preview first), doctor, read-only Inkus check
 - [x] synthetic demo profile
 - [x] safe import/export (validated JSON, diff preview, time-zone confirmation, idempotent, undo; imported active agents arrive paused)
 

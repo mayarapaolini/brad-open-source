@@ -66,6 +66,27 @@ importers:
         specifier: ^4.20.0
         version: 4.23.15
 
+  apps/cli:
+    dependencies:
+      '@brad/adapter-inkus':
+        specifier: workspace:*
+        version: link:../../packages/adapter-inkus
+      '@brad/agent-factory':
+        specifier: workspace:*
+        version: link:../../packages/agent-factory
+      '@brad/api':
+        specifier: workspace:*
+        version: link:../api
+      '@brad/discovery':
+        specifier: workspace:*
+        version: link:../../packages/discovery
+      '@brad/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      tsx:
+        specifier: ^4.20.0
+        version: 4.23.15
+
   apps/studio:
     dependencies:
       '@brad/adapter-inkus':

@@ -2,7 +2,7 @@
 
 **Brad is a local-first control plane that transforms a person's priorities, relationships and constraints into a governed portfolio of AI agents.**
 
-> **Status:** functional local MVP. The diagnostic, life map, agent generation, lifecycle, permission grants, policy simulation, correction loop, audit and import/export run today. Two-way Inkus sync is implemented and tested against a synthetic Inkus; the connection to a real Inkus workspace is not verified yet. Other adapters and real-world inbox/calendar integrations are not implemented.
+> **Status:** functional local MVP. The diagnostic, adaptive discovery, secretary, life map, agent generation, lifecycle, permission grants, policy simulation, correction loop, audit, version history, import/export and CLI run today. The Inkus adapter (agent sync, interview catalog and answers, draft versions) is implemented and tested against a synthetic Inkus and a local MCP server; the connection to a real Inkus workspace is not verified yet (see [the runbook](docs/INTEGRATIONS.md#verifying-against-your-inkus)). Other adapters and real-world inbox/calendar integrations are not implemented.
 
 ![Brad Studio demo: diagnostic, draft agents, explained prioritisation, policy decisions, governance and audit](docs/assets/demo.gif)
 
@@ -31,11 +31,24 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 9. **Correction loop:** when a ranking looks wrong, mark the item as *should be Now / Today / Later*. Brad records the feedback, proposes one concrete life-map change (for example *"Let Jordan Blake interrupt quiet hours: score 61 → 86, Today → Now"*) and applies it only when you click. Adding a new person is never automatic.
 10. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON. An import is previewed first (what changes, warnings such as a UTC time zone), applied only once, and can be undone; imported active agents arrive paused. Brad keeps the previous version before every life-map change and every answer (the last 50); you can restore everything, only the life map or only the answers, and undo the restore.
 
+## CLI
+
+Operate the local store without the Studio. Paths are relative to where you run the command.
+
+```bash
+pnpm -s brad validate export.json              # an export or a bare life map; exit 1 on problems
+pnpm -s brad export --out export.json          # your life map, agents and grants (keep it private)
+pnpm -s brad import export.json                # preview only: nothing changes (exit 2)
+pnpm -s brad import export.json --yes          # apply; active agents arrive paused, undo in Audit
+pnpm -s brad doctor                            # where the data is and what it holds, counts only
+pnpm -s brad inkus check                       # read-only check of your Inkus setup
+```
+
 ## Works today · in development · planned
 
 | Works today | In development | Planned |
 | --- | --- | --- |
-| Local Studio (EN/PT) | CLI for validation and migrations | Encryption at rest for the local store |
+| Local Studio (EN/PT) | Verification against a real Inkus workspace | Encryption at rest for the local store |
 | Wheel of Life diagnostic | Inkus two-way sync: implemented and tested with a synthetic Inkus; real-workspace verification pending | Obsidian adapter |
 | Editable life map: goals, people, boundaries | | Real inbox and calendar connectors |
 | Draft agent generation (no grants) | | Narrow, confirm-first automation recipes |
@@ -55,6 +68,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 | JSON export/import with a diff preview, time-zone check and undo (previous versions) | | |
 | Local SQLite persistence (`node:sqlite`) | | |
 | Synthetic demo profile | | |
+| CLI: `validate`, `export`, `import` (preview, then `--yes`), `doctor`, read-only `inkus check` | | |
 | Unit tests for permission, denial, lifecycle and prioritisation, plus a browser end-to-end test | | |
 | CI: lint, typecheck, tests, build, e2e | | |
 
@@ -72,6 +86,7 @@ The MVP runs without any of them. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.m
 | --- | --- |
 | `apps/studio` | React + Vite interface: diagnostic, discovery, secretary, life map, agents, simulation |
 | `apps/api` | Localhost-only HTTP API and SQLite store |
+| `apps/cli` | Command line: validate, export, import, doctor, read-only Inkus check |
 | `packages/domain` | Life map types, validation, synthetic demo data |
 | `packages/agent-factory` | Life map → draft agents |
 | `packages/priority-engine` | Explainable ranking of incoming items |
