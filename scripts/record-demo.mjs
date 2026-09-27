@@ -143,6 +143,35 @@ try {
   await sharePanel.scrollIntoViewIfNeeded();
   await capture(page, 3000);
 
+  // Interview from Inkus: load the editable question catalog, bring in answers, send a new one back.
+  await page.getByTestId("step-discovery").click();
+  await page.getByTestId("inkus-questions").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="catalog-status"]')?.textContent?.includes("Using Brad"));
+  await page.getByTestId("catalog-inkus").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="catalog-status"]')?.textContent?.includes("questions from Inkus"));
+  await page.getByTestId("inkus-answers").click();
+  const answerSync = page.getByTestId("answer-sync-report");
+  await answerSync.waitFor();
+  assert(
+    (await answerSync.innerText()).includes("1 brought in") &&
+      (await answerSync.innerText()).includes("Work: Inkus has satisfaction 6, your life map has 7"),
+    "answers come in from Inkus, and a differing score is shown but not applied",
+  );
+  await page.getByTestId("discovery-domain-family").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="question"]')?.getAttribute("data-question") === "priority.protect_or_change");
+  assert(
+    (await page.getByTestId("answer-item").first().innerText()).includes("Dinner together on weekdays"),
+    "the interview continues from the answer already stored in Inkus",
+  );
+  await page.getByTestId("option-opt_1").check();
+  await page.getByTestId("answer-submit").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="inkus-answers"]')?.textContent?.includes("1 to send"));
+  await page.getByTestId("inkus-answers").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="answer-sync-report"]')?.textContent?.includes("1 sent"));
+  assert(true, "a new answer is sent to Inkus as a new row");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await capture(page, 3000);
+
   // Change a goal: the previous life map is kept as a version.
   await page.getByTestId("step-lifeMap").click();
   const workGoal = page.locator(".goals label").filter({ hasText: "Work" }).locator("input");

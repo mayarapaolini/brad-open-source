@@ -54,9 +54,9 @@ Data lives in `.brad/brad.db` (git-ignored). Set `BRAD_DATA_DIR` to use another 
 | `packages/agent-factory` | Life map → draft agents; reconciliation on regenerate |
 | `packages/priority-engine` | Explainable ranking and correction suggestions |
 | `packages/policy-engine` | Deterministic allow / deny / confirm with a rule trace |
-| `packages/discovery` | Question catalog, adaptive discovery engine, synthesis |
+| `packages/discovery` | Question catalogs (built-in and parsed from Inkus), adaptive discovery engine, synthesis |
 | `packages/secretary` | Proposals, focus plan (≤3, one protected area), owner-control metrics |
-| `packages/adapter-inkus` | Inkus mapping, two-way sync, MCP client, in-memory fake |
+| `packages/adapter-inkus` | Inkus mapping, agent and answer sync, MCP client, in-memory fake |
 | `apps/api` | Localhost-only HTTP API and SQLite store |
 | `apps/studio` | React + Vite interface (EN/PT) |
 | `docs/adr` | Architecture decision records |

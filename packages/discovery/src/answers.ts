@@ -1,5 +1,5 @@
 import { LIFE_DOMAINS, type LifeDomainId } from "@brad/domain";
-import { getQuestion } from "./catalog";
+import { BUILTIN_CATALOG, type Catalog } from "./catalogs";
 import type { Answer, AnswerOutcome } from "./types";
 
 export interface AnswerInput {
@@ -15,9 +15,9 @@ const MAX_TEXT = 2000;
 const OUTCOMES: AnswerOutcome[] = ["answered", "skipped", "dont_know", "prefer_not"];
 
 /** Validates an answer against the catalog. Returns error codes; empty means valid. */
-export function validateAnswerInput(input: AnswerInput): string[] {
+export function validateAnswerInput(input: AnswerInput, catalog: Catalog = BUILTIN_CATALOG): string[] {
   const errors: string[] = [];
-  const question = getQuestion(input.questionId);
+  const question = catalog.get(input.questionId);
   if (!question) return ["unknown_question"];
   if (!(LIFE_DOMAINS as readonly string[]).includes(input.domain)) errors.push("unknown_domain");
   if (question.domain !== "any" && question.domain !== input.domain) errors.push("question_not_for_domain");
@@ -35,8 +35,8 @@ export function validateAnswerInput(input: AnswerInput): string[] {
   return errors;
 }
 
-export function toAnswer(input: AnswerInput, id: string, asOf: string): Answer {
-  const question = getQuestion(input.questionId)!;
+export function toAnswer(input: AnswerInput, id: string, asOf: string, catalog: Catalog = BUILTIN_CATALOG): Answer {
+  const question = catalog.get(input.questionId)!;
   const outcome = input.outcome ?? "answered";
   const answered = outcome === "answered";
   return {
@@ -50,6 +50,7 @@ export function toAnswer(input: AnswerInput, id: string, asOf: string): Answer {
     outcome,
     status: "self_reported",
     asOf,
-    syncToInkus: false,
+    // With the Inkus catalog every answer is stored in Inkus (owner decision, ADR 0005).
+    syncToInkus: catalog.source === "inkus",
   };
 }

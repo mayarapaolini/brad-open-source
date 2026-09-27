@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
 import type { LifeDomainId } from "@brad/domain";
-import { getQuestion, type Answer, type AnswerOutcome, type Question, type Verdict } from "@brad/discovery";
+import type { Answer, AnswerOutcome, Question, Verdict } from "@brad/discovery";
 import { api, ApiError, type DiscoveryState } from "../api";
 import { useI18n, type Lang } from "../i18n";
 import type { MessageKey } from "../i18n/en";
 
 /** Human-readable content of an answer: chosen options, "Outra resposta" and free text. */
-function describeAnswer(lang: Lang, questionId: string, optionIds: string[], otherText: string | null, freeText: string | null): string {
-  const question = getQuestion(questionId);
+function describeAnswer(
+  find: (id: string) => Question | undefined,
+  lang: Lang,
+  questionId: string,
+  optionIds: string[],
+  otherText: string | null,
+  freeText: string | null,
+): string {
+  const question = find(questionId);
   const labels = optionIds.map((id) => question?.options.find((o) => o.id === id)?.label[lang] ?? id);
   return [...labels, ...(otherText ? [`“${otherText}”`] : []), ...(freeText ? [`“${freeText}”`] : [])].join(", ");
 }
@@ -103,7 +110,74 @@ function QuestionCard({
           {t("discovery.skip")}
         </button>
       </div>
-      <p className="muted small">{question.purpose[lang]}</p>
+      {question.purpose[lang] && <p className="muted small">{question.purpose[lang]}</p>}
+    </div>
+  );
+}
+
+/** Where the questions come from, and the two explicit Inkus actions: reload questions, sync answers. */
+function InkusInterview({ state, run }: { state: DiscoveryState; run: (p: Promise<DiscoveryState>) => Promise<void> }) {
+  const { t } = useI18n();
+  const { catalog } = state;
+  const sync = state.lastAnswerSync;
+  const when = (iso: string) => new Date(iso).toLocaleString();
+  return (
+    <div className="inkus-interview" data-testid="inkus-interview">
+      <div className="segmented">
+        {(["builtin", "inkus"] as const).map((source) => (
+          <button
+            key={source}
+            className={`small-btn ${catalog.source === source ? "primary" : ""}`}
+            onClick={() => void run(api.setCatalogSource(source))}
+            data-testid={`catalog-${source}`}
+          >
+            {t(`catalog.source.${source}`)}
+          </button>
+        ))}
+        <button className="small-btn" onClick={() => void run(api.inkusQuestions())} data-testid="inkus-questions">
+          {t("catalog.reload")}
+        </button>
+        {catalog.source === "inkus" && (
+          <button className="small-btn" onClick={() => void run(api.inkusAnswers())} data-testid="inkus-answers">
+            {t("catalog.syncAnswers", { pending: state.pendingSync })}
+          </button>
+        )}
+      </div>
+      <p className="muted small" data-testid="catalog-status">
+        {catalog.source === "inkus" && catalog.fetchedAt
+          ? t("catalog.fromInkus", { count: catalog.questions.length, when: when(catalog.fetchedAt) })
+          : t("catalog.builtinNote")}
+        {catalog.errors.length > 0 && ` ${t("catalog.errors", { count: catalog.errors.length })}`}
+      </p>
+      {catalog.lastLoad?.error && (
+        <p className="warn small" role="status">
+          {t("catalog.loadFailed", { when: when(catalog.lastLoad.at) })}
+        </p>
+      )}
+      {sync && (
+        <div className="small" data-testid="answer-sync-report">
+          {t("catalog.syncReport", {
+            imported: sync.report.imported,
+            pushed: sync.report.pushed,
+            updated: sync.report.updated,
+            when: when(sync.at),
+          })}
+          {sync.report.assessments.length > 0 && (
+            <ul className="muted">
+              {sync.report.assessments.map((d) => (
+                <li key={`${d.domain}-${d.field}`}>
+                  {t("catalog.scoreDiff", {
+                    domain: t(`domain.${d.domain}`),
+                    field: t(`catalog.field.${d.field}`),
+                    inkus: d.inkus,
+                    local: d.local ?? "—",
+                  })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -117,6 +191,7 @@ export function Discovery({
   onError: (e: unknown) => void;
   onNext: () => void;
 }) {
+  const [interview, setInterview] = useState(false);
   const { t, lang } = useI18n();
   const [state, setState] = useState<DiscoveryState | null>(null);
   const [domain, setDomain] = useState<LifeDomainId | null>(null);
@@ -131,6 +206,10 @@ export function Discovery({
         setDomain((d) => d ?? s.domains.find((x) => x.next)?.domain ?? s.domains[0]?.domain ?? null);
       })
       .catch(onError);
+    api
+      .inkusStatus()
+      .then((s) => setInterview(s.interview))
+      .catch(() => setInterview(false));
   }, [onError]);
 
   const run = async (p: Promise<DiscoveryState>) => {
@@ -149,10 +228,12 @@ export function Discovery({
   };
 
   if (!state) return null;
+  const find = (id: string) => state.catalog.questions.find((q) => q.id === id);
+  const fromInkus = state.catalog.source === "inkus";
   const current = state.domains.find((d) => d.domain === domain) ?? state.domains[0];
   const domainAnswers = state.answers.filter((a) => a.domain === current?.domain);
   const editingAnswer = domainAnswers.find((a) => a.questionId === editing);
-  const question = editing ? getQuestion(editing) : current?.next;
+  const question = editing ? find(editing) : current?.next;
   const minutes = Math.max(1, Math.round((state.estimate * 20) / 60));
 
   const submit = (input: { selectedOptionIds?: string[]; otherText?: string; freeText?: string; outcome: AnswerOutcome }) => {
@@ -166,6 +247,7 @@ export function Discovery({
       <h2>{t("discovery.title")}</h2>
       <p>{t("discovery.intro")}</p>
       <p className="muted small">{t("discovery.estimate", { minutes })}</p>
+      {(interview || fromInkus) && <InkusInterview state={state} run={run} />}
 
       <div className="discovery">
         <nav className="domain-list" aria-label={t("discovery.areas")}>
@@ -192,7 +274,7 @@ export function Discovery({
           {current && (
             <>
               <h3>{t(`domain.${current.domain}`)}</h3>
-              <p className="muted small">{t(`discovery.pathIntro.${current.path}`)}</p>
+              {!fromInkus && <p className="muted small">{t(`discovery.pathIntro.${current.path}`)}</p>}
               {question ? (
                 <QuestionCard question={question} domain={current.domain} initial={editingAnswer} onSubmit={submit} />
               ) : (
@@ -208,25 +290,37 @@ export function Discovery({
                     {domainAnswers.map((a) => (
                       <li key={a.id} data-testid="answer-item">
                         <span className="small">
-                          <strong>{getQuestion(a.questionId)?.text[lang]}</strong>{" "}
+                          <strong>{find(a.questionId)?.text[lang] ?? a.questionId}</strong>{" "}
                           {a.outcome === "answered"
-                            ? describeAnswer(lang, a.questionId, a.selectedOptionIds, a.otherText, a.freeText)
+                            ? describeAnswer(find, lang, a.questionId, a.selectedOptionIds, a.otherText, a.freeText)
                             : t(`discovery.outcome.${a.outcome}`)}
                           {a.status !== "self_reported" && <span className="badge status"> {t(`discovery.status.${a.status}`)}</span>}
+                          {state.changed.includes(a.id) && (
+                            <span className="badge warn-badge" data-testid="answer-changed">
+                              {" "}
+                              {t("discovery.questionChanged")}
+                            </span>
+                          )}
                         </span>
                         <span className="answer-actions">
                           <button className="link" onClick={() => setEditing(a.questionId)}>
                             {t("discovery.edit")}
                           </button>
-                          <label className="check small">
-                            <input
-                              type="checkbox"
-                              checked={a.syncToInkus}
-                              onChange={(e) => void setSync(a.id, a.domain, e.target.checked)}
-                              data-testid="answer-sync"
-                            />{" "}
-                            {t("discovery.syncInkus")}
-                          </label>
+                          {fromInkus ? (
+                            <span className="badge status small" data-testid="answer-inkus">
+                              {t(a.inkus ? "discovery.inInkus" : "discovery.toInkus")}
+                            </span>
+                          ) : (
+                            <label className="check small">
+                              <input
+                                type="checkbox"
+                                checked={a.syncToInkus}
+                                onChange={(e) => void setSync(a.id, a.domain, e.target.checked)}
+                                data-testid="answer-sync"
+                              />{" "}
+                              {t("discovery.syncInkus")}
+                            </label>
+                          )}
                         </span>
                       </li>
                     ))}
@@ -248,7 +342,7 @@ export function Discovery({
                 <p>
                   {t(`synth.${item.kind}`, {
                     domain: t(`domain.${item.domain}`),
-                    what: describeAnswer(lang, item.questionId, item.optionIds, item.otherText, item.freeText),
+                    what: describeAnswer(find, lang, item.questionId, item.optionIds, item.otherText, item.freeText),
                   })}{" "}
                   <span className="badge status">{t(`discovery.status.${item.status}`)}</span>
                 </p>

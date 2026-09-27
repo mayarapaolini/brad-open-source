@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { InkusActor, InkusClient, InkusSpec, InkusSpecFields } from "./types";
+import type { InkusActor, InkusClient, InkusDatabaseRecord, InkusSpec, InkusSpecFields } from "./types";
 
 export interface McpInkusOptions {
   url: string;
@@ -59,6 +59,16 @@ export async function connectInkus(options: McpInkusOptions): Promise<InkusClien
       call<InkusSpec>("create_agent_specification", { actor_id: actorId, ...specInput(fields) }),
     activateSpec: async (specId) => {
       await call("set_agent_specification_status", { agent_specification_id: specId, status: "active" });
+    },
+    listRecords: async (databaseId) => (await call<InkusDatabaseRecord[] | null>("list_database_records", { database_id: databaseId })) ?? [],
+    createRecord: (databaseId, fields, idempotencyKey) =>
+      call<InkusDatabaseRecord>("create_database_record", {
+        database_id: databaseId,
+        fields,
+        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+      }),
+    updateRecord: async (recordId, fields) => {
+      await call("update_database_record", { record_id: recordId, fields });
     },
     close: () => client.close(),
   };

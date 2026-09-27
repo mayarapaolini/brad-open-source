@@ -298,3 +298,17 @@ button.link.edit { padding-left: 0; }
   display: block;
   margin: 4px 0;
 }
+
+.inkus-interview {
+  margin: 8px 0 16px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+.warn {
+  color: var(--warn);
+}
+.warn-badge {
+  background: var(--warn-soft);
+  color: var(--warn);
+}

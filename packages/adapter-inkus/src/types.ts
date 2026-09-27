@@ -25,6 +25,14 @@ export interface InkusSpec extends InkusSpecFields {
   status: "draft" | "active" | "deprecated";
 }
 
+/** A row of an Inkus structured database, keyed by field name. */
+export interface InkusDatabaseRecord {
+  id: string;
+  fields: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /** The operations Brad needs from Inkus. The MCP client and the test fake both implement it. */
 export interface InkusClient {
   listActors(): Promise<InkusActor[]>;
@@ -34,4 +42,8 @@ export interface InkusClient {
   /** Creates a new draft version; Inkus never overwrites an existing one. */
   createSpec(actorId: string, fields: InkusSpecFields): Promise<InkusSpec>;
   activateSpec(specId: string): Promise<void>;
+  listRecords(databaseId: string): Promise<InkusDatabaseRecord[]>;
+  /** The idempotency key makes a retried push create the row once. */
+  createRecord(databaseId: string, fields: Record<string, unknown>, idempotencyKey?: string): Promise<InkusDatabaseRecord>;
+  updateRecord(recordId: string, fields: Record<string, unknown>): Promise<void>;
 }

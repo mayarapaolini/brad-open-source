@@ -104,6 +104,14 @@ export function Audit({
       }
       case "sync": {
         if (input.action === "export") return t("audit.inkusExport", { agent: agentName(input.agentId) });
+        if (input.source === "inkus-questions")
+          return t("audit.inkusQuestions", { questions: Number(result.questions ?? 0), errors: Number(result.errors ?? 0) });
+        if (input.source === "inkus-answers")
+          return t("audit.inkusAnswers", {
+            imported: Number(result.imported ?? 0),
+            pushed: Number(result.pushed ?? 0),
+            updated: Number(result.updated ?? 0),
+          });
         const report = result as Record<string, unknown[] | undefined>;
         return t("audit.sync", {
           imported: report.imported?.length ?? 0,
@@ -116,6 +124,8 @@ export function Audit({
         });
       }
       case "discovery":
+        if (input.action === "catalog_source")
+          return t("audit.catalogSource", { source: t(`catalog.source.${input.source === "inkus" ? "inkus" : "builtin"}`) });
         return input.action === "sync_consent"
           ? t((result.syncToInkus ? "audit.syncConsentOn" : "audit.syncConsentOff") as MessageKey)
           : t("audit.synthesis", { item: String(input.itemId), verdict: t(`discovery.verdict.${input.verdict}` as MessageKey) });

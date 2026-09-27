@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@brad/discovery": "workspace:*",
     "@brad/domain": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.1"
   },

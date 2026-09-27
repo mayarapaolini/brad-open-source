@@ -4,7 +4,7 @@ Integrations are optional adapters. Brad remains useful without them.
 
 | System | Appropriate use | Must not do |
 | --- | --- | --- |
-| Inkus | Two-way sync of agent definitions (see [ADR 0003](adr/0003-inkus-editable-mirror.md)) | Receive credentials, grants, people or history; grant capabilities or change lifecycle state |
+| Inkus | Two-way sync of agent definitions (see [ADR 0003](adr/0003-inkus-editable-mirror.md)); interview questions and answers from its databases ([ADR 0005](adr/0005-inkus-interview-source.md)) | Receive credentials, grants, people or history; grant capabilities or change lifecycle state |
 | Obsidian | Import/export user-selected Markdown notes and frontmatter | Scan a whole vault by default or rewrite notes without preview |
 | Hermes | Execute agents from their active Inkus spec; display runs, queues, and errors | Bypass Brad policies or receive unrelated life context |
 
