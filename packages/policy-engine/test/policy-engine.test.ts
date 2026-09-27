@@ -129,3 +129,43 @@ describe("cross-cutting agents", () => {
     expect(evaluate({ ...request, domain: "family" }, context({ agents: [listed], grants: [grant] })).outcome).toBe("deny");
   });
 });
+
+describe("personal and work contexts", () => {
+  const bridgeAgent: AgentDefinition = {
+    id: "inkus-orchestrator",
+    name: "Orchestrator",
+    domain: null,
+    actionDomains: ["work", "family"],
+    state: "approved",
+    goal: "Balance priorities",
+    reason: "imported",
+    requestedCapabilities: ["read_calendar"],
+    excludedByBoundary: [],
+    escalation: "ask_owner",
+    origin: "inkus",
+  };
+  const grant = { ...demoGrants[0]!, id: "g-orch", agentId: bridgeAgent.id, capability: "read_calendar" as const };
+  const request = { agentId: bridgeAgent.id, capability: "read_calendar" as const, domain: "work" as const };
+
+  it("deny an agent that spans both contexts until the owner allows a bridge", () => {
+    const decision = evaluate(request, context({ agents: [bridgeAgent], grants: [grant] }));
+    expect(decision).toMatchObject({ outcome: "deny", decidedBy: "context_boundary" });
+    expect(decision.trace.find((s) => s.rule === "context_boundary")?.params).toMatchObject({
+      agentContext: "personal+work",
+      requestContext: "work",
+    });
+    const base = context({ agents: [bridgeAgent], grants: [grant] });
+    const bridged = { ...base, boundaries: { ...base.boundaries, contextBridges: [bridgeAgent.id] } };
+    expect(evaluate(request, bridged).outcome).toBe("allow");
+  });
+
+  it("follow the owner's own split of work domains", () => {
+    const base = context({ agents: [bridgeAgent], grants: [grant] });
+    const allWork = { ...base, boundaries: { ...base.boundaries, workDomains: ["work" as const, "family" as const] } };
+    expect(evaluate(request, allWork).outcome).toBe("allow");
+  });
+
+  it("check the context right after the domain scope", () => {
+    expect(RULE_ORDER.indexOf("context_boundary")).toBe(RULE_ORDER.indexOf("domain_scope") + 1);
+  });
+});

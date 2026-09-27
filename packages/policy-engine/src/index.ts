@@ -1,6 +1,9 @@
 import {
   CONSEQUENTIAL_CAPABILITIES,
   agentActionDomains,
+  agentContexts,
+  domainContext,
+  isBridged,
   isGrantValid,
   type AgentDefinition,
   type AgentState,
@@ -31,6 +34,7 @@ export type PolicyRule =
   | "forbidden_capability"
   | "agent_state"
   | "domain_scope"
+  | "context_boundary"
   | "grant_present"
   | "grant_valid"
   | "sensitive_domain"
@@ -55,6 +59,7 @@ export const RULE_ORDER: readonly PolicyRule[] = [
   "forbidden_capability",
   "agent_state",
   "domain_scope",
+  "context_boundary",
   "grant_present",
   "grant_valid",
   "sensitive_domain",
@@ -97,6 +102,17 @@ export function evaluate(request: ActionRequest, ctx: PolicyContext): PolicyDeci
           agentDomain: agent?.domain ?? (agent ? "cross_cutting" : "unknown"),
           requestDomain: request.domain,
         },
+      };
+    },
+    context_boundary: (): StepResult => {
+      // Personal and work stay apart: an agent acting in both needs an explicit owner bridge.
+      const requestContext = domainContext(ctx.boundaries, request.domain);
+      const contexts = agent ? agentContexts(agent, ctx.boundaries) : [];
+      const bridged = agent ? isBridged(agent, ctx.boundaries) : false;
+      const crosses = contexts.some((c) => c !== requestContext);
+      return {
+        status: crosses && !bridged ? "fail" : "pass",
+        params: { agentContext: contexts.join("+") || "none", requestContext, bridged: String(bridged) },
       };
     },
     grant_present: (): StepResult =>

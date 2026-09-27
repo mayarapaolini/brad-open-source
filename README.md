@@ -22,14 +22,14 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 
 1. **Diagnostic:** you rate each life area for satisfaction and importance. The Wheel of Life is only the discovery step that shows which agents you need. It is not a medical or psychological assessment.
 2. **Discovery:** an adaptive conversation per area. A hard, important area starts with what it means and what gets in the way; an area that goes well asks what to protect; a middling one asks first whether you want any change. Every question offers "Another answer" plus free text, skip, "I don't know" and "I'd rather not answer". Brad then restates what it understood and asks "Did I get it right?"; nothing becomes a fact until you confirm. Each answer has its own "sync with Inkus" switch, off by default.
-3. **Secretary:** Brad turns your answers into at most three focuses, and one slot protects an important area that is going well. Each proposal says why (your scores and answers, with their dates), how confident it is (high only once you confirmed the answers) and what is missing; the areas that wait are listed with the trade-off. You accept, adjust, snooze for a week or decline, and declining counts as a valid answer. You can silence an area, and a weekly "was this week lighter or heavier?" check-in is optional. The secretary never sends, schedules or pays anything.
-4. **Life map:** you edit goals, the people who matter (relationship, priority, who may interrupt quiet hours) and boundaries: quiet hours, capabilities no agent may ever use, and areas where Brad must always ask first.
+3. **Secretary:** Brad turns your answers into at most three focuses, and one slot protects an important area that is going well. Each proposal says why (your scores and answers, with their dates), how confident it is (high only once you confirmed the answers) and what is missing; the areas that wait are listed with the trade-off. You accept, adjust, snooze for a week or decline, and declining counts as a valid answer. You can silence an area, and a weekly "was this week lighter or heavier?" check-in is optional. A Personal / Work switch keeps the two contexts apart. You can also prepare a **summary to share** with someone in one context: it lists areas, goals and agreed focuses only, never your answers; areas from the other context never go in, and health and finances stay out unless you tick them for that one summary. The secretary never sends, schedules or pays anything.
+4. **Life map:** you edit goals, the people who matter (relationship, priority, who may interrupt quiet hours) and boundaries: quiet hours, capabilities no agent may ever use, areas where Brad must always ask first, and which areas count as work (work and study by default; the rest is personal).
 5. **Draft agents:** Brad proposes one agent for each area that matters a lot or is neglected. Every agent starts as a `draft` with **no permissions**. Capabilities are only *requested*, and those your boundaries forbid are dropped.
 6. **Simulation:** Brad ranks a synthetic inbox and answers questions like *"why did this family message get priority?"* Each score is a sum of named rules you can inspect.
-7. **Policy engine:** you ask *"can this agent do this?"* and get `allow`, `deny` or `confirm` with a full rule trace. Deny by default, fixed rule order, and no LLM involved.
+7. **Policy engine:** you ask *"can this agent do this?"* and get `allow`, `deny` or `confirm` with a full rule trace. Deny by default, fixed rule order, and no LLM involved. An agent that would mix personal and work areas is denied unless you allow it as a bridge.
 8. **Governance:** an agent moves `draft → configured → simulated → approved → active` only when it has a goal, requested capabilities, a policy simulation you have seen and a current grant. You grant capabilities for 30 days and can revoke them at any time; a revoked grant denies the action immediately.
 9. **Correction loop:** when a ranking looks wrong, mark the item as *should be Now / Today / Later*. Brad records the feedback, proposes one concrete life-map change (for example *"Let Jordan Blake interrupt quiet hours: score 61 → 86, Today → Now"*) and applies it only when you click. Adding a new person is never automatic.
-10. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON. An import is previewed first (what changes, warnings such as a UTC time zone), applied only once, and can be undone; imported active agents arrive paused.
+10. **Audit:** every simulation, lifecycle change and permission change is recorded locally and shown newest first. Export/import moves your life map, agents and grants as JSON. An import is previewed first (what changes, warnings such as a UTC time zone), applied only once, and can be undone; imported active agents arrive paused. Brad keeps the previous version before every life-map change and every answer (the last 50); you can restore everything, only the life map or only the answers, and undo the restore.
 
 ## Works today · in development · planned
 
@@ -41,8 +41,11 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 | Draft agent generation (no grants) | | Narrow, confirm-first automation recipes |
 | Agent lifecycle with enforced requirements | | Threat model and security review |
 | Time-boxed grants with revocation | | |
-| Adaptive discovery questions with "Another answer" everywhere, confirmable synthesis, per-answer Inkus consent | | |
+| Adaptive discovery questions with "Another answer" everywhere, confirmable synthesis, per-answer Inkus consent (a second confirmation for sensitive areas) | | |
 | Secretary: at most three focuses with evidence, confidence and trade-offs; one protected area; accept/adjust/snooze/decline; per-area silence; optional weekly check-in | | |
+| Personal / work contexts: a policy rule, owner bridges and a Secretary filter | | |
+| Summary to share, with sensitive areas left out unless consented for that summary | | |
+| Version history for the life map and answers, with partial restore and undo | | |
 | Explainable priority simulation | | |
 | Correction loop: feedback → suggested change → apply | | |
 | Deterministic policy engine with what-if checks | | |

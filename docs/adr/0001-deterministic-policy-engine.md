@@ -18,15 +18,16 @@ A language model in this path would make answers vary between runs, hard to expl
 
 Authorization is a pure function, `evaluate(request, { agents, grants, boundaries, now })`. It has no LLM, network or I/O, and `now` is passed in by the caller.
 
-- It evaluates **8 rules in a fixed order**:
+- It evaluates **9 rules in a fixed order**:
   1. `agent_known`
   2. `forbidden_capability`
   3. `agent_state`
   4. `domain_scope`
-  5. `grant_present`
-  6. `grant_valid`
-  7. `sensitive_domain`
-  8. `consequential_action`
+  5. `context_boundary` (added later: personal and work stay apart. An agent whose domains span both contexts, or that acts outside its own context, is denied unless the owner lists it in `contextBridges`. Work and study are the work context by default, and the owner can change that with `workDomains`.)
+  6. `grant_present`
+  7. `grant_valid`
+  8. `sensitive_domain`
+  9. `consequential_action`
 - It **denies by default.** The first failing rule decides `deny`, and the rules after it are recorded as `skipped`. A flag rule (a sensitive domain, or a send/schedule/delete/pay action) turns the outcome into `confirm`. Only when every rule passes is the outcome `allow`, recorded as `decidedBy: "all_rules_passed"`.
 - Every decision returns its **full trace**, and simulations are stored in the local decision history.
 - Lifecycle transitions follow the same approach (`checkTransition`). An agent cannot become `active` without a goal, requested capabilities, a policy simulation the owner has seen, and a currently valid grant.
@@ -41,4 +42,4 @@ Authorization is a pure function, `evaluate(request, { agents, grants, boundarie
 ## Alternatives considered
 
 - **An LLM as the judge**, with natural-language policies: rejected as non-deterministic, hard to audit and injectable.
-- **A general policy language** (OPA/Rego, Cedar): stronger for large systems, but adds a runtime and a language to learn for about eight rules. We can revisit this if the rule set grows or third parties need to write policies.
+- **A general policy language** (OPA/Rego, Cedar): stronger for large systems, but adds a runtime and a language to learn for about nine rules. We can revisit this if the rule set grows or third parties need to write policies.

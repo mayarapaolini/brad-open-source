@@ -84,10 +84,14 @@ describe("discovery API", () => {
     expect(await call("POST", "/api/discovery/synthesis", { itemId: "nope", verdict: "yes" })).toMatchObject({ status: 404 });
   });
 
-  it("stores per-answer Inkus consent, off by default", async () => {
-    const answers = (await call("GET", "/api/discovery")).json.answers as { id: string; syncToInkus: boolean }[];
+  it("stores per-answer Inkus consent, off by default, with a second confirmation for sensitive areas", async () => {
+    const answers = (await call("GET", "/api/discovery")).json.answers as { id: string; domain: string; syncToInkus: boolean }[];
     expect(answers.every((a) => a.syncToInkus === false)).toBe(true);
-    const res = await call("POST", "/api/discovery/answers/sync", { answerId: answers[0]!.id, syncToInkus: true });
-    expect((res.json.answers as { id: string; syncToInkus: boolean }[]).find((a) => a.id === answers[0]!.id)?.syncToInkus).toBe(true);
+    const target = answers.find((a) => a.domain === "health")!;
+    // Health is a sensitive area: syncing it needs a second, explicit confirmation.
+    const refused = await call("POST", "/api/discovery/answers/sync", { answerId: target.id, syncToInkus: true });
+    expect(refused).toMatchObject({ status: 409, json: { error: "sensitive_confirmation_required" } });
+    const res = await call("POST", "/api/discovery/answers/sync", { answerId: target.id, syncToInkus: true, confirmSensitive: true });
+    expect((res.json.answers as { id: string; syncToInkus: boolean }[]).find((a) => a.id === target.id)?.syncToInkus).toBe(true);
   });
 });

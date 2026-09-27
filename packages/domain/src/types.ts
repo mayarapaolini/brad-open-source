@@ -90,7 +90,15 @@ export interface Boundaries {
   forbiddenCapabilities: Capability[];
   /** Domains where every action requires owner confirmation. */
   sensitiveDomains: LifeDomainId[];
+  /** Domains that belong to the work context; the rest are personal. Missing means DEFAULT_WORK_DOMAINS. */
+  workDomains?: LifeDomainId[];
+  /** Agent ids the owner allows to act across the personal and work contexts. */
+  contextBridges?: string[];
 }
+
+export type LifeContext = "personal" | "work";
+
+export const DEFAULT_WORK_DOMAINS: readonly LifeDomainId[] = ["work", "study"];
 
 export interface LifeMap {
   schemaVersion: 1;
@@ -175,7 +183,7 @@ export interface IncomingItem {
 
 export interface DecisionRecord {
   id: number;
-  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction" | "sync" | "discovery" | "secretary";
+  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction" | "sync" | "discovery" | "secretary" | "share";
   createdAt: string;
   input: unknown;
   result: unknown;

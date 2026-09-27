@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   agencyMetrics,
+  buildShareSummary,
   generateProposals,
+  inContext,
   planFocus,
   type FeedbackAction,
   type Load,
@@ -40,6 +42,7 @@ import {
   type AgentState,
   type BradExport,
   type Capability,
+  type LifeContext,
   type LifeDomainId,
   type ConsentGrant,
   type IncomingItem,
@@ -54,7 +57,7 @@ import {
   type Suggestion,
   type Tier,
 } from "@brad/priority-engine";
-import type { Store } from "./store";
+import type { RestoreScope, Store } from "./store";
 
 const MAX_BODY_BYTES = 1_000_000;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -126,11 +129,13 @@ function secretaryState(store: Store) {
   const map = requireLifeMap(store);
   const silenced = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
   const feedback = store.getProposalFeedback();
-  const proposals = generateProposals(map, store.getAnswers(), silenced);
+  const context = store.getSetting<LifeContext | "all">("secretary.context", "all");
+  const proposals = inContext(map, generateProposals(map, store.getAnswers(), silenced), context);
   const now = new Date().toISOString();
   const checkins = store.listCheckins();
   const lastCheckin = checkins[0]?.at;
   return {
+    context,
     plan: planFocus(map, proposals, feedback, now, silenced),
     feedback,
     metrics: agencyMetrics(feedback),
@@ -292,6 +297,9 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     const body = (await readJson(req)) as { lifeMap?: unknown };
     const errors = validateLifeMap(body.lifeMap);
     if (errors.length > 0) throw new HttpError(400, "invalid life map", errors);
+    const current = store.getLifeMap();
+    // Every real change keeps the previous version, so the owner can go back to it.
+    if (current && JSON.stringify(current) !== JSON.stringify(body.lifeMap)) store.createSnapshot("before_lifemap_save");
     store.saveLifeMap(body.lifeMap as LifeMap);
     return { lifeMap: store.getLifeMap() };
   },
@@ -434,16 +442,27 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
   "GET /api/snapshots": (_req, store) => ({ snapshots: store.listSnapshots() }),
 
   "POST /api/snapshots/restore": async (req, store) => {
-    const body = (await readJson(req)) as { snapshotId?: number };
+    const body = (await readJson(req)) as { snapshotId?: number; scope?: RestoreScope };
     const snapshot = Number.isInteger(body.snapshotId) ? store.getSnapshot(body.snapshotId!) : null;
     if (!snapshot) throw new HttpError(404, "snapshot_not_found");
+    const scope = body.scope ?? "all";
+    if (!["all", "lifeMap", "answers"].includes(scope)) throw new HttpError(400, "invalid_scope");
+    if (scope === "answers" && !snapshot.answers) throw new HttpError(409, "no_answers_in_version");
+    if (scope === "lifeMap" && !snapshot.lifeMap) throw new HttpError(409, "no_life_map_in_version");
     // Restoring is itself undoable, and never re-activates anything.
     const undoId = store.createSnapshot("before_restore");
-    store.restore({
-      ...snapshot,
-      agents: snapshot.agents.map((a) => (a.state === "active" ? { ...a, state: "paused" as const } : a)),
-    });
-    store.addDecision("import", { action: "restore", snapshotId: body.snapshotId, undoSnapshotId: undoId }, { agents: snapshot.agents.length });
+    store.restore(
+      {
+        ...snapshot,
+        agents: snapshot.agents.map((a) => (a.state === "active" ? { ...a, state: "paused" as const } : a)),
+      },
+      scope,
+    );
+    store.addDecision(
+      "import",
+      { action: "restore", scope, snapshotId: body.snapshotId, undoSnapshotId: undoId },
+      { agents: scope === "all" ? snapshot.agents.length : null, answers: scope === "lifeMap" ? null : (snapshot.answers?.length ?? null) },
+    );
     return { lifeMap: store.getLifeMap(), agents: store.getAgents(), grants: store.getGrants(), snapshotId: undoId };
   },
 
@@ -556,6 +575,7 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     const input = (await readJson(req)) as AnswerInput;
     const errors = validateAnswerInput(input);
     if (errors.length > 0) throw new HttpError(400, errors[0]!, errors);
+    store.createSnapshot("before_answer");
     const answers = store.getAnswers();
     // Editing keeps history: the previous answer becomes stale instead of disappearing.
     const previous = currentAnswer(answers, input.domain, input.questionId);
@@ -568,12 +588,19 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
   },
 
   "POST /api/discovery/answers/sync": async (req, store) => {
-    const body = (await readJson(req)) as { answerId?: string; syncToInkus?: unknown };
+    const body = (await readJson(req)) as { answerId?: string; syncToInkus?: unknown; confirmSensitive?: unknown };
     const answer = store.getAnswers().find((a) => a.id === body.answerId);
     if (!answer) throw new HttpError(404, "answer_not_found");
     if (typeof body.syncToInkus !== "boolean") throw new HttpError(400, "invalid_request");
+    // Sensitive areas (health and finances by default) need a second, explicit confirmation to leave Brad.
+    const sensitive = requireLifeMap(store).boundaries.sensitiveDomains.includes(answer.domain);
+    if (body.syncToInkus && sensitive && body.confirmSensitive !== true) throw new HttpError(409, "sensitive_confirmation_required");
     store.saveAnswer({ ...answer, syncToInkus: body.syncToInkus });
-    store.addDecision("discovery", { action: "sync_consent", answerId: answer.id, questionId: answer.questionId }, { syncToInkus: body.syncToInkus });
+    store.addDecision(
+      "discovery",
+      { action: "sync_consent", answerId: answer.id, questionId: answer.questionId },
+      { syncToInkus: body.syncToInkus, sensitive },
+    );
     return discoveryState(store);
   },
 
@@ -623,6 +650,34 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     store.setSetting("secretary.silenced", next);
     store.addDecision("secretary", { action: body.silenced ? "silence" : "unsilence", domain: body.domain }, { silenced: next });
     return secretaryState(store);
+  },
+
+  "POST /api/secretary/context": async (req, store) => {
+    const body = (await readJson(req)) as { context?: string };
+    if (!["personal", "work", "all"].includes(body.context ?? "")) throw new HttpError(400, "invalid_context");
+    store.setSetting("secretary.context", body.context);
+    return secretaryState(store);
+  },
+
+  "POST /api/share/summary": async (req, store) => {
+    const body = (await readJson(req)) as { audience?: string; consents?: unknown };
+    if (!["personal", "work"].includes(body.audience ?? "")) throw new HttpError(400, "invalid_audience");
+    const consents = Array.isArray(body.consents) ? body.consents : [];
+    if (!consents.every((d) => LIFE_DOMAINS.includes(d as LifeDomainId))) throw new HttpError(400, "invalid_consents");
+    const map = requireLifeMap(store);
+    const silenced = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
+    const summary = buildShareSummary(map, generateProposals(map, store.getAnswers(), silenced), store.getProposalFeedback(), {
+      audience: body.audience as LifeContext,
+      consents: consents as LifeDomainId[],
+      silenced,
+    });
+    // Brad only prepares the text; the owner copies it. The history keeps which areas went in, not the content.
+    store.addDecision(
+      "share",
+      { audience: summary.audience, consents },
+      { included: summary.lines.map((l) => l.domain), excluded: summary.excluded },
+    );
+    return summary;
   },
 
   "POST /api/secretary/checkin": async (req, store) => {

@@ -77,6 +77,10 @@ export function validateLifeMap(input: unknown): string[] {
       errors.push("boundaries.forbiddenCapabilities contains an unknown capability");
     if (!Array.isArray(b.sensitiveDomains) || !b.sensitiveDomains.every((d) => LIFE_DOMAINS.includes(d)))
       errors.push("boundaries.sensitiveDomains contains an unknown domain");
+    if (b.workDomains !== undefined && (!Array.isArray(b.workDomains) || !b.workDomains.every((d) => LIFE_DOMAINS.includes(d))))
+      errors.push("boundaries.workDomains contains an unknown domain");
+    if (b.contextBridges !== undefined && (!Array.isArray(b.contextBridges) || !b.contextBridges.every((id) => typeof id === "string")))
+      errors.push("boundaries.contextBridges must be a list of agent ids");
   }
 
   return errors;

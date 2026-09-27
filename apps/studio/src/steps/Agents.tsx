@@ -9,6 +9,8 @@ import {
   type AgentState,
   type Capability,
   type ConsentGrant,
+  type LifeMap,
+  agentContexts,
 } from "@brad/domain";
 import { api, ApiError } from "../api";
 import { useI18n } from "../i18n";
@@ -20,6 +22,8 @@ interface Props {
   agents: AgentDefinition[];
   grants: ConsentGrant[];
   forbidden: Capability[];
+  lifeMap: LifeMap;
+  onLifeMapChanged: (map: LifeMap) => void;
   onGenerate: () => void;
   onChanged: () => Promise<void>;
   onNext: () => void;
@@ -221,7 +225,7 @@ function InkusPanel({ onSynced, onStatus }: { onSynced: () => Promise<void>; onS
   );
 }
 
-export function Agents({ agents, grants, forbidden, onGenerate, onChanged, onNext }: Props) {
+export function Agents({ agents, grants, forbidden, lifeMap, onLifeMapChanged, onGenerate, onChanged, onNext }: Props) {
   const { t } = useI18n();
   const [editing, setEditing] = useState<string | null>(null);
   const [inkusEnabled, setInkusEnabled] = useState(false);
@@ -236,6 +240,18 @@ export function Agents({ agents, grants, forbidden, onGenerate, onChanged, onNex
     }
   };
   const [notices, setNotices] = useState<Record<string, string>>({});
+
+  // Personal and work stay apart unless the owner lets this agent cross (saved in the life map).
+  const setBridge = async (agentId: string, allowed: boolean) => {
+    const bridges = (lifeMap.boundaries.contextBridges ?? []).filter((id) => id !== agentId);
+    const next = { ...lifeMap, boundaries: { ...lifeMap.boundaries, contextBridges: allowed ? [...bridges, agentId] : bridges } };
+    try {
+      onLifeMapChanged((await api.saveLifeMap(next)).lifeMap);
+      note(agentId, "");
+    } catch (e) {
+      note(agentId, String(e));
+    }
+  };
   const [showArchived, setShowArchived] = useState(false);
   const now = new Date().toISOString();
 
@@ -325,6 +341,17 @@ export function Agents({ agents, grants, forbidden, onGenerate, onChanged, onNex
                       ? (a.actionDomains ?? []).map((d) => t(`domain.${d}`)).join(", ")
                       : t("agents.actsNowhere")}
                   </p>
+                )}
+                {agentContexts(a, lifeMap.boundaries).length > 1 && (
+                  <label className="check small bridge">
+                    <input
+                      type="checkbox"
+                      checked={(lifeMap.boundaries.contextBridges ?? []).includes(a.id)}
+                      onChange={(e) => void setBridge(a.id, e.target.checked)}
+                      data-testid="context-bridge"
+                    />{" "}
+                    {t("agents.bridge")}
+                  </label>
                 )}
                 <p>
                   <strong>{t("agents.goal")}:</strong> {a.goal || <em className="muted">{t("agents.noGoal")}</em>}

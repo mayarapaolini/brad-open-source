@@ -75,6 +75,8 @@ export interface SnapshotBody {
   lifeMap: LifeMap | null;
   agents: AgentDefinition[];
   grants: ConsentGrant[];
+  /** Discovery answers (history included). Missing in snapshots taken before answers were versioned. */
+  answers?: Answer[];
 }
 
 export interface SnapshotInfo {
@@ -83,7 +85,15 @@ export interface SnapshotInfo {
   reason: string;
   agents: number;
   grants: number;
+  answers: number | null;
+  people: number;
+  goals: number;
 }
+
+export type RestoreScope = "all" | "lifeMap" | "answers";
+
+/** Older versions beyond this are pruned, oldest first. */
+export const MAX_SNAPSHOTS = 50;
 
 /** Local SQLite store. The file never leaves the machine; nothing is sent to a network service. */
 export class Store {
@@ -227,6 +237,12 @@ export class Store {
       .run(answer.id, answer.domain, answer.asOf, JSON.stringify(answer));
   }
 
+  /** Replaces every discovery answer (used when restoring a previous version). */
+  replaceAnswers(answers: Answer[]): void {
+    this.db.exec("DELETE FROM answers");
+    for (const answer of answers) this.saveAnswer(answer);
+  }
+
   getFeedback(): Record<string, { verdict: Verdict; correction: string | null }> {
     const rows = this.db.prepare("SELECT item_id, verdict, correction FROM synthesis_feedback").all() as {
       item_id: string;
@@ -274,13 +290,25 @@ export class Store {
     return this.db.prepare("SELECT at, load FROM checkins ORDER BY id DESC LIMIT ?").all(limit) as { at: string; load: string }[];
   }
 
-  /** Saves the current life map, agents and grants so a change can be undone. */
+  /** Saves the current life map, agents, grants and answers so a change can be undone. */
   createSnapshot(reason: string): number {
-    const body: SnapshotBody = { lifeMap: this.getLifeMap(), agents: this.getAgents(), grants: this.getGrants() };
-    const info = this.db
-      .prepare("INSERT INTO snapshots (created_at, reason, body) VALUES (?, ?, ?)")
-      .run(new Date().toISOString(), reason, JSON.stringify(body));
-    return Number(info.lastInsertRowid);
+    const body: SnapshotBody = {
+      lifeMap: this.getLifeMap(),
+      agents: this.getAgents(),
+      grants: this.getGrants(),
+      answers: this.getAnswers(),
+    };
+    let id = 0;
+    this.transaction(() => {
+      const info = this.db
+        .prepare("INSERT INTO snapshots (created_at, reason, body) VALUES (?, ?, ?)")
+        .run(new Date().toISOString(), reason, JSON.stringify(body));
+      id = Number(info.lastInsertRowid);
+      this.db
+        .prepare("DELETE FROM snapshots WHERE id NOT IN (SELECT id FROM snapshots ORDER BY id DESC LIMIT ?)")
+        .run(MAX_SNAPSHOTS);
+    });
+    return id;
   }
 
   getSnapshot(id: number): SnapshotBody | null {
@@ -294,15 +322,30 @@ export class Store {
       .all(limit) as { id: number; created_at: string; reason: string; body: string }[];
     return rows.map((r) => {
       const body = JSON.parse(r.body) as SnapshotBody;
-      return { id: Number(r.id), createdAt: r.created_at, reason: r.reason, agents: body.agents.length, grants: body.grants.length };
+      return {
+        id: Number(r.id),
+        createdAt: r.created_at,
+        reason: r.reason,
+        agents: body.agents.length,
+        grants: body.grants.length,
+        answers: body.answers ? body.answers.filter((a) => a.status !== "stale").length : null,
+        people: body.lifeMap?.people.length ?? 0,
+        goals: body.lifeMap?.assessments.filter((a) => a.goal.trim() !== "").length ?? 0,
+      };
     });
   }
 
-  /** Replaces the current state with a snapshot. An empty snapshot clears the life map too. */
-  restore(body: SnapshotBody): void {
+  /**
+   * Replaces the current state with a snapshot, or only part of it (`scope`).
+   * An empty snapshot clears the life map too.
+   */
+  restore(body: SnapshotBody, scope: RestoreScope = "all"): void {
     this.transaction(() => {
+      if (scope !== "lifeMap" && body.answers) this.replaceAnswers(body.answers);
+      if (scope === "answers") return;
       if (body.lifeMap) this.saveLifeMap(body.lifeMap);
       else this.db.exec("DELETE FROM life_map");
+      if (scope === "lifeMap") return;
       this.db.exec("DELETE FROM agents");
       const insertAgent = this.db.prepare("INSERT INTO agents (id, position, body) VALUES (?, ?, ?)");
       body.agents.forEach((a, i) => insertAgent.run(a.id, i, JSON.stringify(a)));
