@@ -1,9 +1,16 @@
-import type { InkusActor, InkusClient, InkusSpec, InkusSpecFields } from "./types";
+import { demoInkusCatalogRecords } from "@brad/discovery";
+import type { InkusActor, InkusClient, InkusDatabaseRecord, InkusSpec, InkusSpecFields } from "./types";
+
+/** Database ids of the synthetic workspace (the real ones come from the environment). */
+export const DEMO_QUESTIONS_DB = "demo-questions-db";
+export const DEMO_ANSWERS_DB = "demo-answers-db";
 
 /** In-memory Inkus for tests and the offline demo. Mirrors versioning: new versions start as drafts. */
 export class FakeInkus implements InkusClient {
   actors: InkusActor[] = [];
   specs: InkusSpec[] = [];
+  databases: Record<string, InkusDatabaseRecord[]> = {};
+  private idempotency = new Map<string, InkusDatabaseRecord>();
   private seq = 0;
 
   private id(prefix: string): string {
@@ -42,6 +49,31 @@ export class FakeInkus implements InkusClient {
     if (!spec) throw new Error(`unknown spec ${specId}`);
     for (const other of this.specs) if (other.actor_id === spec.actor_id && other.status === "active") other.status = "deprecated";
     spec.status = "active";
+  }
+
+  async listRecords(databaseId: string): Promise<InkusDatabaseRecord[]> {
+    const rows = this.databases[databaseId];
+    if (!rows) throw new Error(`unknown database ${databaseId}`);
+    return structuredClone(rows);
+  }
+
+  async createRecord(databaseId: string, fields: Record<string, unknown>, idempotencyKey?: string): Promise<InkusDatabaseRecord> {
+    const rows = this.databases[databaseId];
+    if (!rows) throw new Error(`unknown database ${databaseId}`);
+    const key = idempotencyKey && `${databaseId}:${idempotencyKey}`;
+    if (key && this.idempotency.has(key)) return structuredClone(this.idempotency.get(key)!);
+    const now = new Date().toISOString();
+    const row: InkusDatabaseRecord = { id: this.id("rec"), fields: structuredClone(fields), created_at: now, updated_at: now };
+    rows.push(row);
+    if (key) this.idempotency.set(key, row);
+    return structuredClone(row);
+  }
+
+  async updateRecord(recordId: string, fields: Record<string, unknown>): Promise<void> {
+    const row = Object.values(this.databases).flat().find((r) => r.id === recordId);
+    if (!row) throw new Error(`unknown record ${recordId}`);
+    row.fields = { ...row.fields, ...structuredClone(fields) };
+    row.updated_at = new Date().toISOString();
   }
 
   /** Test helper: retire every version of an actor, as a migration in Inkus would. */
@@ -91,6 +123,19 @@ export async function seedDemoInkus(fake = new FakeInkus()): Promise<FakeInkus> 
       responsibilities: ["Review requested capabilities"],
     },
   ];
+  // The interview lives in two databases, as in a real workspace: questions and answers.
+  fake.databases[DEMO_QUESTIONS_DB] = demoInkusCatalogRecords().map((r) => ({ ...r, created_at: "2026-09-26T20:00:00.000Z" }));
+  const answer = (fields: Record<string, unknown>): InkusDatabaseRecord => ({
+    id: `demo-a-${fields.domain}-${fields.question_id}`,
+    fields: { answered_at: "2026-09-20T09:00:00.000Z", epistemic_status: "self_reported", question_version: "export-v1", selected_option_ids_json: "[]", ...fields },
+  });
+  fake.databases[DEMO_ANSWERS_DB] = [
+    answer({ domain: "family", question_id: "assessment.satisfaction", numeric_value: 5 }),
+    answer({ domain: "family", question_id: "assessment.importance", numeric_value: 10 }),
+    answer({ domain: "work", question_id: "assessment.satisfaction", numeric_value: 6 }),
+    answer({ domain: "family", question_id: "goal.meaning", free_text: "Dinner together on weekdays" }),
+  ];
+
   // A retired agent: only deprecated versions. Brad must never load it.
   const legacy = await fake.createActor({ name: "Demo Legacy Writer", description: "Retired agent" });
   await fake.editInInkus(legacy.id, { mission: "Old mission", knowledge_domains: ["escrita"] });

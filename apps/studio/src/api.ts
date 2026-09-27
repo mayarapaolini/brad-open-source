@@ -12,9 +12,9 @@ import type {
   TransitionCheck,
 } from "@brad/domain";
 import type { ActionRequest, PolicyDecision } from "@brad/policy-engine";
-import type { SyncReport } from "@brad/adapter-inkus";
+import type { AnswerSyncReport, SyncReport } from "@brad/adapter-inkus";
 import type { AgencyMetrics, FeedbackAction, FocusPlan, Load, ProposalFeedback, ShareSummary } from "@brad/secretary";
-import type { Answer, AnswerInput, DomainPath, Question, SynthesisItem, Verdict } from "@brad/discovery";
+import type { Answer, AnswerInput, CatalogError, DomainPath, Question, SynthesisItem, Verdict } from "@brad/discovery";
 import type { RankedItem, Suggestion, Tier } from "@brad/priority-engine";
 
 export class ApiError extends Error {
@@ -80,7 +80,10 @@ export const api = {
     call<{ lifeMap: LifeMap; suggestion: Suggestion }>("POST", "/api/corrections/apply", { correctionId }),
   updateAgent: (agentId: string, patch: Partial<Pick<AgentDefinition, "name" | "goal" | "responsibilities" | "domain" | "actionDomains" | "requestedCapabilities">>) =>
     call<{ agent: AgentDefinition; grants: ConsentGrant[] }>("POST", "/api/agents/update", { agentId, patch }),
-  inkusStatus: () => call<{ enabled: boolean; lastSync: DecisionRecord | null }>("GET", "/api/adapters/inkus"),
+  inkusStatus: () => call<{ enabled: boolean; interview: boolean; lastSync: DecisionRecord | null }>("GET", "/api/adapters/inkus"),
+  setCatalogSource: (source: "builtin" | "inkus") => call<DiscoveryState>("POST", "/api/discovery/catalog", { source }),
+  inkusQuestions: () => call<DiscoveryState>("POST", "/api/adapters/inkus/questions"),
+  inkusAnswers: () => call<DiscoveryState>("POST", "/api/adapters/inkus/answers"),
   inkusSync: () =>
     call<{ report: SyncReport; decisionId: number; agents: AgentDefinition[]; grants: ConsentGrant[] }>(
       "POST",
@@ -120,6 +123,17 @@ export interface SnapshotInfo {
 }
 
 export interface DiscoveryState {
+  catalog: {
+    source: "builtin" | "inkus";
+    version: string;
+    fetchedAt: string | null;
+    errors: CatalogError[];
+    questions: Question[];
+    lastLoad: { at: string; error: string | null } | null;
+  };
+  changed: string[];
+  pendingSync: number;
+  lastAnswerSync: { at: string; report: AnswerSyncReport } | null;
   estimate: number;
   domains: { domain: LifeDomainId; path: DomainPath; done: number; total: number; next: Question | null; closed: boolean }[];
   answers: Answer[];

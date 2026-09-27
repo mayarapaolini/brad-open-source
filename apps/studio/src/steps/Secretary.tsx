@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { LIFE_DOMAINS, domainContext, type LifeContext, type LifeDomainId, type LifeMap } from "@brad/domain";
-import { getQuestion } from "@brad/discovery";
 import type { Evidence, Load, Proposal, ShareSummary } from "@brad/secretary";
 import { api, type SecretaryState } from "../api";
 import { useI18n } from "../i18n";
@@ -19,14 +18,13 @@ function EvidenceLine({ e }: { e: Evidence }) {
       </li>
     );
   }
-  const question = getQuestion(String(e.detail.questionId));
-  const options = ((e.detail.options as string[] | null) ?? []).map(
-    (id) => question?.options.find((o) => o.id === id)?.label[lang] ?? id,
-  );
-  const other = e.detail.otherText ? [`“${String(e.detail.otherText)}”`] : [];
+  // The question text and option labels travel with the evidence (built-in or Inkus catalog).
+  const question = String((lang === "pt" ? e.detail.questionPt : e.detail.questionEn) ?? e.detail.questionId);
+  const options = ((lang === "pt" ? e.detail.labelsPt : e.detail.labelsEn) as string[] | null) ?? [];
+  const other = [e.detail.otherText, e.detail.freeText].filter(Boolean).map((text) => `“${String(text)}”`);
   return (
     <li>
-      {question?.text[lang]} <strong>{[...options, ...other].join(", ")}</strong>{" "}
+      {question} <strong>{[...options, ...other].join(", ")}</strong>{" "}
       <span className="badge status">{t(`discovery.status.${String(e.detail.status)}` as MessageKey)}</span>
     </li>
   );

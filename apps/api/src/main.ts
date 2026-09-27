@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
-import { FakeInkus, connectInkus, seedDemoInkus } from "@brad/adapter-inkus";
+import { DEMO_ANSWERS_DB, DEMO_QUESTIONS_DB, FakeInkus, connectInkus, seedDemoInkus } from "@brad/adapter-inkus";
 import { createApiServer, type ServerOptions } from "./server";
 import { Store } from "./store";
 
@@ -31,8 +31,14 @@ function inkusFromEnv(): ServerOptions["inkus"] {
 }
 
 const inkus = inkusFromEnv();
+// The interview databases in Inkus (question catalog and answers); ids come from the environment.
+const fakeInkus = process.env.BRAD_INKUS_FAKE === "1";
+const inkusDatabases = {
+  questions: process.env.BRAD_INKUS_QUESTIONS_DB ?? (fakeInkus ? DEMO_QUESTIONS_DB : undefined),
+  answers: process.env.BRAD_INKUS_ANSWERS_DB ?? (fakeInkus ? DEMO_ANSWERS_DB : undefined),
+};
 const store = new Store(join(dataDir, "brad.db"));
-const server = createApiServer(store, { staticDir: existsSync(staticDir) ? staticDir : undefined, inkus });
+const server = createApiServer(store, { staticDir: existsSync(staticDir) ? staticDir : undefined, inkus, inkusDatabases });
 
 // Bind to loopback only: Brad is never reachable from the network.
 server.listen(port, "127.0.0.1", () => {

@@ -1,6 +1,5 @@
 import type { LifeDomainId, LifeMap } from "@brad/domain";
-import { getQuestion } from "./catalog";
-import { currentAnswer } from "./engine";
+import { BUILTIN_CATALOG, slotAnswer, type Catalog, type Slot } from "./catalogs";
 import type { Answer } from "./types";
 
 export type SynthesisKind = "priority" | "preserve" | "barrier" | "support";
@@ -21,7 +20,7 @@ export interface SynthesisItem {
   status: "inferred" | "user_confirmed" | "corrected" | "rejected";
 }
 
-const KIND_QUESTIONS: [SynthesisKind, string[]][] = [
+const KIND_QUESTIONS: [SynthesisKind, Slot[]][] = [
   ["priority", ["meaning"]],
   ["preserve", ["preserve"]],
   ["barrier", ["barrier"]],
@@ -36,15 +35,16 @@ export function synthesize(
   lifeMap: LifeMap,
   answers: Answer[],
   feedback: Record<string, Verdict> = {},
+  catalog: Catalog = BUILTIN_CATALOG,
 ): SynthesisItem[] {
   const items: SynthesisItem[] = [];
   for (const assessment of lifeMap.assessments) {
     const domain = assessment.domain;
     for (const [kind, slots] of KIND_QUESTIONS) {
       for (const slot of slots) {
-        const questionId = getQuestion(`${slot}.${domain}`) ? `${slot}.${domain}` : slot;
-        const answer = currentAnswer(answers, domain, questionId);
-        if (!answer || answer.outcome !== "answered") continue;
+        const answer = slotAnswer(catalog, answers, domain, slot);
+        if (!answer) continue;
+        const questionId = answer.questionId;
         if (answer.selectedOptionIds.length === 0 && !answer.otherText && !answer.freeText) continue;
         const id = `${domain}:${kind}`;
         const verdict = feedback[id];

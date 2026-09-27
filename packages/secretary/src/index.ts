@@ -1,5 +1,5 @@
 import { LIFE_DOMAINS, type DomainAssessment, type LifeDomainId, type LifeMap } from "@brad/domain";
-import { classifyDomain, currentAnswer, getQuestion, type Answer } from "@brad/discovery";
+import { BUILTIN_CATALOG, answerTags, classifyDomain, slotAnswer as catalogSlotAnswer, type Answer, type Catalog, type Slot } from "@brad/discovery";
 
 export type ProposalKind = "focus" | "protect" | "question";
 
@@ -71,14 +71,23 @@ export const MAX_FOCUS = 3;
 /** Preferred order when the owner accepts several kinds of help. Least intrusive last. */
 const SUPPORT_ORDER: ProposalAction[] = ["prepare_draft", "show_options", "organise", "ask_before_acting", "remind_when_asked"];
 
-function answerEvidence(answer: Answer): Evidence {
+function answerEvidence(answer: Answer, catalog: Catalog): Evidence {
+  const question = catalog.get(answer.questionId);
+  const labels = (lang: "pt" | "en") =>
+    answer.selectedOptionIds.map((id) => question?.options.find((o) => o.id === id)?.label[lang] ?? id);
   return {
     type: "answer",
     ref: answer.id,
     detail: {
       questionId: answer.questionId,
+      // The question and labels travel with the evidence, so it reads the same whatever the catalog.
+      questionPt: question?.text.pt ?? answer.questionId,
+      questionEn: question?.text.en ?? answer.questionId,
       options: answer.selectedOptionIds,
+      labelsPt: labels("pt"),
+      labelsEn: labels("en"),
       otherText: answer.otherText,
+      freeText: answer.freeText,
       status: answer.status,
       asOf: answer.asOf,
     },
@@ -98,25 +107,27 @@ function confidenceOf(basis: Answer[]): Confidence {
   return basis.every((a) => a.status === "user_confirmed" || a.status === "corrected") ? "high" : "medium";
 }
 
-function slotAnswer(answers: Answer[], domain: LifeDomainId, slot: string): Answer | undefined {
-  const id = getQuestion(`${slot}.${domain}`) ? `${slot}.${domain}` : slot;
-  const answer = currentAnswer(answers, domain, id);
-  return answer?.outcome === "answered" ? answer : undefined;
-}
 
 /**
  * Proposals for one moment in time, derived only from the life map and the owner's own answers.
  * Deterministic. A low score chooses what to ask, never what to do: actions come from the help
  * the owner said they accept, and an area where they said "don't act" or "not now" gets nothing.
  */
-export function generateProposals(map: LifeMap, answers: Answer[], silenced: LifeDomainId[] = []): Proposal[] {
+export function generateProposals(
+  map: LifeMap,
+  answers: Answer[],
+  silenced: LifeDomainId[] = [],
+  catalog: Catalog = BUILTIN_CATALOG,
+): Proposal[] {
   const proposals: Proposal[] = [];
+  const slotAnswer = (list: Answer[], domain: LifeDomainId, slot: Slot) => catalogSlotAnswer(catalog, list, domain, slot);
+  const has = (answer: Answer | undefined, tag: string) => (answer ? answerTags(catalog, answer).includes(tag) : false);
 
   for (const a of map.assessments) {
     if (silenced.includes(a.domain)) continue;
     const path = classifyDomain(a);
     const support = slotAnswer(answers, a.domain, "support");
-    if (support?.selectedOptionIds.includes("do_not_act")) continue;
+    if (has(support, "do_not_act")) continue;
 
     const base = (action: ProposalAction, kind: ProposalKind, basis: Answer[]): Proposal => {
       const frequency = slotAnswer(answers, a.domain, "frequency");
@@ -126,11 +137,11 @@ export function generateProposals(map: LifeMap, answers: Answer[], silenced: Lif
         domain: a.domain,
         action,
         goal: a.goal,
-        evidence: [assessmentEvidence(a), ...basis.map(answerEvidence)],
+        evidence: [assessmentEvidence(a), ...basis.map((b) => answerEvidence(b, catalog))],
         missing: basis.length === 0 ? ["deadline", "answers"] : ["deadline"],
         confidence: confidenceOf(basis),
         requiresApproval: true,
-        thisWeek: frequency?.selectedOptionIds.includes("this_week") ?? false,
+        thisWeek: has(frequency, "this_week"),
       };
     };
 
@@ -142,12 +153,12 @@ export function generateProposals(map: LifeMap, answers: Answer[], silenced: Lif
 
     if (path === "middle") {
       const desire = slotAnswer(answers, a.domain, "change_desire");
-      if (!desire?.selectedOptionIds.includes("yes")) continue; // no wish to change: stay quiet
+      if (!has(desire, "yes")) continue; // no wish to change: stay quiet
     }
 
     const meaning = slotAnswer(answers, a.domain, "meaning");
     const barrier = slotAnswer(answers, a.domain, "barrier");
-    if (barrier?.selectedOptionIds.includes("not_now")) continue;
+    if (has(barrier, "not_now")) continue;
     if (!meaning) {
       proposals.push(base("ask_meaning", "question", []));
       continue;
@@ -156,7 +167,7 @@ export function generateProposals(map: LifeMap, answers: Answer[], silenced: Lif
       proposals.push(base("ask_support", "question", [meaning]));
       continue;
     }
-    const action = SUPPORT_ORDER.find((s) => support.selectedOptionIds.includes(s)) ?? "ask_before_acting";
+    const action = SUPPORT_ORDER.find((s) => has(support, s)) ?? "ask_before_acting";
     proposals.push(base(action, "focus", [meaning, ...(barrier ? [barrier] : []), support]));
   }
   return proposals;

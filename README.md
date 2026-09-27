@@ -21,7 +21,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 ## What the MVP does
 
 1. **Diagnostic:** you rate each life area for satisfaction and importance. The Wheel of Life is only the discovery step that shows which agents you need. It is not a medical or psychological assessment.
-2. **Discovery:** an adaptive conversation per area. A hard, important area starts with what it means and what gets in the way; an area that goes well asks what to protect; a middling one asks first whether you want any change. Every question offers "Another answer" plus free text, skip, "I don't know" and "I'd rather not answer". Brad then restates what it understood and asks "Did I get it right?"; nothing becomes a fact until you confirm. Each answer has its own "sync with Inkus" switch, off by default.
+2. **Discovery:** an adaptive conversation per area. A hard, important area starts with what it means and what gets in the way; an area that goes well asks what to protect; a middling one asks first whether you want any change. Every question offers "Another answer" plus free text, skip, "I don't know" and "I'd rather not answer". Brad then restates what it understood and asks "Did I get it right?"; nothing becomes a fact until you confirm. The questions can come from Brad or from an **editable catalog in Inkus**: reload them after editing in Inkus, with no code change. Brad follows each question's branching rule, brings in answers already stored there, sends new ones back as new rows, and lists any score in Inkus that differs from your life map instead of changing it. With Brad's own questions, each answer has its own "sync with Inkus" switch, off by default.
 3. **Secretary:** Brad turns your answers into at most three focuses, and one slot protects an important area that is going well. Each proposal says why (your scores and answers, with their dates), how confident it is (high only once you confirmed the answers) and what is missing; the areas that wait are listed with the trade-off. You accept, adjust, snooze for a week or decline, and declining counts as a valid answer. You can silence an area, and a weekly "was this week lighter or heavier?" check-in is optional. A Personal / Work switch keeps the two contexts apart. You can also prepare a **summary to share** with someone in one context: it lists areas, goals and agreed focuses only, never your answers; areas from the other context never go in, and health and finances stay out unless you tick them for that one summary. The secretary never sends, schedules or pays anything.
 4. **Life map:** you edit goals, the people who matter (relationship, priority, who may interrupt quiet hours) and boundaries: quiet hours, capabilities no agent may ever use, areas where Brad must always ask first, and which areas count as work (work and study by default; the rest is personal).
 5. **Draft agents:** Brad proposes one agent for each area that matters a lot or is neglected. Every agent starts as a `draft` with **no permissions**. Capabilities are only *requested*, and those your boundaries forbid are dropped.
@@ -42,6 +42,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 | Agent lifecycle with enforced requirements | | Threat model and security review |
 | Time-boxed grants with revocation | | |
 | Adaptive discovery questions with "Another answer" everywhere, confirmable synthesis, per-answer Inkus consent (a second confirmation for sensitive areas) | | |
+| Interview from an editable Inkus catalog: branching rules, answers read from and written to Inkus, offline copy (tested with a synthetic Inkus) | Draft agent specs from confirmed interview answers | |
 | Secretary: at most three focuses with evidence, confidence and trade-offs; one protected area; accept/adjust/snooze/decline; per-area silence; optional weekly check-in | | |
 | Personal / work contexts: a policy rule, owner bridges and a Secretary filter | | |
 | Summary to share, with sensitive areas left out unless consented for that summary | | |
@@ -58,7 +59,7 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 
 ## Optional adapters (not required)
 
-- **Inkus:** two-way sync of agent definitions. Edit an agent in Brad or in Inkus and the next sync reconciles it; deprecated Inkus versions are never loaded, same-domain agents are linked rather than duplicated, and new Inkus agents are only created on request. Grants, lifecycle state, people and history never leave Brad, and an Inkus edit can never grant a capability or activate an agent. Enable with `BRAD_ADAPTER_INKUS_ENABLED=true`, `BRAD_INKUS_MCP_URL` and `BRAD_INKUS_TOKEN`; try it offline with `BRAD_INKUS_FAKE=1`. See [ADR 0003](docs/adr/0003-inkus-editable-mirror.md).
+- **Inkus:** two-way sync of agent definitions. Edit an agent in Brad or in Inkus and the next sync reconciles it; deprecated Inkus versions are never loaded, same-domain agents are linked rather than duplicated, and new Inkus agents are only created on request. Grants, lifecycle state, people and history never leave Brad, and an Inkus edit can never grant a capability or activate an agent. Enable with `BRAD_ADAPTER_INKUS_ENABLED=true`, `BRAD_INKUS_MCP_URL` and `BRAD_INKUS_TOKEN`; try it offline with `BRAD_INKUS_FAKE=1`. See [ADR 0003](docs/adr/0003-inkus-editable-mirror.md). For the interview, also set `BRAD_INKUS_QUESTIONS_DB` and `BRAD_INKUS_ANSWERS_DB` to your Inkus database ids ([ADR 0005](docs/adr/0005-inkus-interview-source.md)).
 - **Obsidian:** would import and export Markdown notes you pick. It never scans a whole vault.
 - **Hermes:** runs agents from their active Inkus spec, so it follows Brad's edits after each sync. Letting Hermes query Brad's policy engine directly is still open.
 
@@ -74,7 +75,7 @@ The MVP runs without any of them. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.m
 | `packages/agent-factory` | Life map → draft agents |
 | `packages/priority-engine` | Explainable ranking of incoming items |
 | `packages/policy-engine` | Deterministic allow / deny / confirm decisions |
-| `packages/discovery` | Question catalog, adaptive discovery engine and synthesis |
+| `packages/discovery` | Question catalogs (built-in and Inkus), adaptive discovery engine and synthesis |
 | `packages/secretary` | Proposals from confirmed answers, focus plan and owner-control metrics |
 | `packages/adapter-inkus` | Inkus mapping, two-way sync and MCP client (plus an in-memory fake for tests) |
 

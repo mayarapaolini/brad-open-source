@@ -1,5 +1,5 @@
 import type { DomainAssessment, LifeDomainId } from "@brad/domain";
-import { QUESTIONS, getQuestion } from "./catalog";
+import { getQuestion } from "./catalog";
 import type { Answer, DomainPath, Question } from "./types";
 
 export const IMPORTANT = 7;
@@ -51,10 +51,10 @@ export interface DomainPlan {
 }
 
 /**
- * Deterministic plan for one domain given what the owner has answered so far.
+ * Deterministic plan for one domain with the built-in catalog, given what the owner has answered.
  * Skipped, "don't know" and "prefer not" all count as handled: the question is not asked again.
  */
-export function planDomain(assessment: DomainAssessment, answers: Answer[]): DomainPlan {
+export function planBuiltin(assessment: DomainAssessment, answers: Answer[]): DomainPlan {
   const domain = assessment.domain;
   const path = classifyDomain(assessment);
   const sequence: Question[] = [];
@@ -87,9 +87,3 @@ export function planDomain(assessment: DomainAssessment, answers: Answer[]): Dom
   return { domain, path, sequence, next: closed ? null : (unanswered ?? null), done, total, closed };
 }
 
-/** Rough total for the "estimated time" line: every question the current answers could lead to. */
-export function estimateQuestions(assessments: DomainAssessment[]): number {
-  return assessments.reduce((sum, a) => sum + PATHS[classifyDomain(a)].length, 0);
-}
-
-export { QUESTIONS };

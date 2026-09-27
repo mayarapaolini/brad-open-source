@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoLifeMap } from "@brad/domain";
-import { toAnswer, type Answer, type AnswerInput } from "@brad/discovery";
+import { demoInkusCatalogRecords, parseInkusCatalog, toAnswer, type Answer, type AnswerInput } from "@brad/discovery";
 import { MAX_FOCUS, agencyMetrics, buildShareSummary, generateProposals, inContext, planFocus } from "../src";
 
 let n = 0;
@@ -123,6 +123,36 @@ describe("contexts and the summary to share", () => {
     const a = buildShareSummary(demoLifeMap, proposals, {}, { audience: "personal", consents: ["health"], now: NOW });
     expect(JSON.stringify(a)).not.toContain("Dinner together");
     expect(buildShareSummary(demoLifeMap, proposals, {}, { audience: "personal", consents: ["health"], now: NOW })).toEqual(a);
+  });
+});
+
+describe("with the Inkus question catalog", () => {
+  const { catalog } = parseInkusCatalog(demoInkusCatalogRecords());
+  let k = 0;
+  const inkus = (input: AnswerInput): Answer => {
+    k += 1;
+    return toAnswer(input, `i${k}`, `2026-09-27T10:00:${String(k).padStart(2, "0")}Z`, catalog);
+  };
+
+  it("reads the same meanings from positional option ids and carries the question text as evidence", () => {
+    const answers = [
+      inkus({ questionId: "goal.meaning", domain: "health", freeText: "Dormir melhor" }),
+      inkus({ questionId: "priority.protect_or_change", domain: "health", selectedOptionIds: ["opt_3"] }),
+      inkus({ questionId: "help.preference", domain: "health", selectedOptionIds: ["opt_4"] }),
+      inkus({ questionId: "priority.protect_or_change", domain: "work", selectedOptionIds: ["opt_1"] }),
+    ];
+    const proposals = generateProposals(demoLifeMap, answers, [], catalog);
+    expect(proposals.map((p) => p.id)).toEqual(["work:protect", "health:prepare_draft"]);
+    const evidence = proposals.find((p) => p.id === "health:prepare_draft")!.evidence[1]!;
+    expect(evidence.detail).toMatchObject({ questionPt: "O que você gostaria de preservar ou mudar aqui?", freeText: "Dormir melhor" });
+  });
+
+  it("stays quiet where the owner chose 'Não atuar'", () => {
+    const answers = [
+      inkus({ questionId: "goal.meaning", domain: "health", freeText: "Dormir melhor" }),
+      inkus({ questionId: "help.preference", domain: "health", selectedOptionIds: ["opt_5"] }),
+    ];
+    expect(generateProposals(demoLifeMap, answers, [], catalog).map((p) => p.domain)).not.toContain("health");
   });
 });
 

@@ -15,15 +15,29 @@ export type Construct =
 export interface QuestionOption {
   id: string;
   label: Localized;
+  /**
+   * What choosing this option means to Brad (e.g. "prepare_draft", "not_now", "yes").
+   * Built-in options mean their own id; options read from Inkus keep their ids (opt_1…) and
+   * get tags from their label, so the rules never depend on option order.
+   */
+  tags?: string[];
 }
+
+/** Where to go after a question, as written in the Inkus catalog's `branch_json`. */
+export type Branch =
+  | { kind: "next"; next: string }
+  | { kind: "if"; condition: string; next: string; otherwise: string }
+  | { kind: "trigger"; condition: string; then: string }
+  | { kind: "end" };
 
 export interface Question {
   /** Stable id plus version: a wording change creates a new version, old answers keep theirs. */
   id: string;
-  version: number;
+  /** A number for built-in questions; a content hash for questions read from Inkus. */
+  version: number | string;
   /** "any" questions are asked per domain; a specific domain overrides the generic one. */
   domain: LifeDomainId | "any";
-  construct: Construct;
+  construct: Construct | string;
   text: Localized;
   options: QuestionOption[];
   multiple: boolean;
@@ -32,6 +46,10 @@ export interface Question {
   /** Methodological inspiration. Authored questions, not a validated instrument. */
   source: string;
   purpose: Localized;
+  /** Inkus catalog only: interview stage, branching rule and the record the question came from. */
+  stage?: string;
+  branch?: Branch;
+  externalId?: string;
 }
 
 /**
@@ -45,7 +63,7 @@ export type AnswerStatus = "self_reported" | "user_confirmed" | "corrected" | "i
 export interface Answer {
   id: string;
   questionId: string;
-  questionVersion: number;
+  questionVersion: number | string;
   domain: LifeDomainId;
   selectedOptionIds: string[];
   /** Text for "Outra resposta". */
@@ -55,8 +73,10 @@ export interface Answer {
   outcome: AnswerOutcome;
   status: AnswerStatus;
   asOf: string;
-  /** Per-item consent to sync with Inkus. Off unless the owner turns it on. */
+  /** Per-item consent to sync with Inkus. Off unless the owner turns it on (built-in catalog). */
   syncToInkus: boolean;
+  /** The Inkus record this answer is stored in, and the status last written there. */
+  inkus?: { recordId: string; pushedStatus: AnswerStatus };
 }
 
 export type DomainPath = "struggling" | "thriving" | "middle";

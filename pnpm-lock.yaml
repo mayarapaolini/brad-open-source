@@ -108,6 +108,9 @@ importers:
 
   packages/adapter-inkus:
     dependencies:
+      '@brad/discovery':
+        specifier: workspace:*
+        version: link:../discovery
       '@brad/domain':
         specifier: workspace:*
         version: link:../domain

@@ -11,11 +11,15 @@ import {
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
-import { exportAgentToInkus, syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
+import { exportAgentToInkus, loadCatalogRecords, syncAnswers, syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
 import { generateDraftAgents, reconcileAgents } from "@brad/agent-factory";
 import {
+  BUILTIN_CATALOG,
   currentAnswer,
   estimateQuestions,
+  parseInkusCatalog,
+  type Catalog,
+  type CatalogRecord,
   planDomain,
   synthesize,
   toAnswer,
@@ -109,19 +113,59 @@ function requireLifeMap(store: Store): LifeMap {
   return map;
 }
 
+/** The last question catalog read from Inkus, kept so an interview can go on when Inkus is unreachable. */
+interface CatalogSnapshot {
+  records: CatalogRecord[];
+  fetchedAt: string;
+}
+
+/** The catalog in use: the built-in questions, or the last snapshot read from Inkus (ADR 0005). */
+function catalogState(store: Store) {
+  const source = store.getSetting<"builtin" | "inkus">("discovery.catalogSource", "builtin");
+  const snapshot = store.getSetting<CatalogSnapshot | null>("discovery.inkusCatalog", null);
+  if (source !== "inkus" || !snapshot) return { catalog: BUILTIN_CATALOG, fetchedAt: null, errors: [] as unknown[] };
+  const parsed = parseInkusCatalog(snapshot.records);
+  return { catalog: parsed.catalog, fetchedAt: snapshot.fetchedAt, errors: parsed.errors as unknown[] };
+}
+
+function activeCatalog(store: Store): Catalog {
+  return catalogState(store).catalog;
+}
+
 function discoveryState(store: Store) {
   const map = requireLifeMap(store);
   const answers = store.getAnswers();
   const feedback = store.getFeedback();
   const verdicts = Object.fromEntries(Object.entries(feedback).map(([id, f]) => [id, f.verdict]));
+  const { catalog, fetchedAt, errors } = catalogState(store);
+  const current = answers.filter((a) => a.status !== "stale");
   return {
-    estimate: estimateQuestions(map.assessments),
+    catalog: {
+      source: catalog.source,
+      version: catalog.version,
+      fetchedAt,
+      errors,
+      questions: catalog.questions,
+      lastLoad: store.getSetting<{ at: string; error: string | null } | null>("discovery.inkusCatalogLoad", null),
+    },
+    estimate: estimateQuestions(map.assessments, catalog),
     domains: map.assessments.map((a) => {
-      const plan = planDomain(a, answers);
+      const plan = planDomain(a, answers, catalog);
       return { domain: a.domain, path: plan.path, done: plan.done, total: plan.total, next: plan.next, closed: plan.closed };
     }),
-    answers: answers.filter((a) => a.status !== "stale"),
-    synthesis: synthesize(map, answers, verdicts).map((item) => ({ ...item, correction: feedback[item.id]?.correction ?? null })),
+    answers: current,
+    // Answers given to an earlier wording of a question: shown for re-confirmation, never reinterpreted.
+    changed: current
+      .filter((a) => {
+        const q = catalog.get(a.questionId);
+        return q !== undefined && a.questionVersion !== q.version;
+      })
+      .map((a) => a.id),
+    // With the Inkus catalog every answer goes to Inkus at the next sync.
+    pendingSync:
+      catalog.source === "inkus" ? current.filter((a) => !a.inkus && catalog.get(a.questionId)).length : 0,
+    lastAnswerSync: store.getSetting<unknown>("discovery.inkusAnswerSync", null),
+    synthesis: synthesize(map, answers, verdicts, catalog).map((item) => ({ ...item, correction: feedback[item.id]?.correction ?? null })),
   };
 }
 
@@ -130,7 +174,8 @@ function secretaryState(store: Store) {
   const silenced = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
   const feedback = store.getProposalFeedback();
   const context = store.getSetting<LifeContext | "all">("secretary.context", "all");
-  const proposals = inContext(map, generateProposals(map, store.getAnswers(), silenced), context);
+  const catalog = activeCatalog(store);
+  const proposals = inContext(map, generateProposals(map, store.getAnswers(), silenced, catalog), context);
   const now = new Date().toISOString();
   const checkins = store.listCheckins();
   const lastCheckin = checkins[0]?.at;
@@ -573,7 +618,8 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
   "POST /api/discovery/answers": async (req, store) => {
     requireLifeMap(store);
     const input = (await readJson(req)) as AnswerInput;
-    const errors = validateAnswerInput(input);
+    const catalog = activeCatalog(store);
+    const errors = validateAnswerInput(input, catalog);
     if (errors.length > 0) throw new HttpError(400, errors[0]!, errors);
     store.createSnapshot("before_answer");
     const answers = store.getAnswers();
@@ -582,8 +628,8 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     const now = new Date().toISOString();
     const asOf = previous && previous.asOf >= now ? new Date(Date.parse(previous.asOf) + 1).toISOString() : now;
     if (previous) store.saveAnswer({ ...previous, status: "stale" });
-    const answer = toAnswer(input, `ans-${randomUUID()}`, asOf);
-    store.saveAnswer(previous ? { ...answer, syncToInkus: previous.syncToInkus } : answer);
+    const answer = toAnswer(input, `ans-${randomUUID()}`, asOf, catalog);
+    store.saveAnswer(previous ? { ...answer, syncToInkus: answer.syncToInkus || previous.syncToInkus } : answer);
     return discoveryState(store);
   },
 
@@ -601,6 +647,64 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
       { action: "sync_consent", answerId: answer.id, questionId: answer.questionId },
       { syncToInkus: body.syncToInkus, sensitive },
     );
+    return discoveryState(store);
+  },
+
+  "POST /api/discovery/catalog": async (req, store) => {
+    const body = (await readJson(req)) as { source?: string };
+    if (!["builtin", "inkus"].includes(body.source ?? "")) throw new HttpError(400, "invalid_source");
+    if (body.source === "inkus" && !store.getSetting<CatalogSnapshot | null>("discovery.inkusCatalog", null))
+      throw new HttpError(409, "catalog_not_loaded");
+    store.setSetting("discovery.catalogSource", body.source);
+    store.addDecision("discovery", { action: "catalog_source", source: body.source }, { version: activeCatalog(store).version });
+    return discoveryState(store);
+  },
+
+  "POST /api/adapters/inkus/questions": async (_req, store) => {
+    const databaseId = options.inkusDatabases?.questions;
+    if (!options.inkus || !databaseId) throw new HttpError(409, "questions_db_not_configured");
+    requireLifeMap(store);
+    const at = new Date().toISOString();
+    let client: (InkusClient & { close?: () => Promise<void> }) | undefined;
+    try {
+      client = await options.inkus();
+      const records = await loadCatalogRecords(client, databaseId);
+      const { catalog, errors } = parseInkusCatalog(records);
+      if (catalog.questions.length === 0) throw new Error("the catalog has no active questions");
+      store.setSetting("discovery.inkusCatalog", { records, fetchedAt: at } satisfies CatalogSnapshot);
+      store.setSetting("discovery.inkusCatalogLoad", { at, error: null });
+      store.addDecision("sync", { source: "inkus-questions" }, { questions: catalog.questions.length, version: catalog.version, errors: errors.length });
+    } catch (error) {
+      // Keep the previous snapshot: the interview can go on, and the Studio says the catalog may be out of date.
+      const message = error instanceof Error ? error.message : String(error);
+      store.setSetting("discovery.inkusCatalogLoad", { at, error: message.slice(0, 300) });
+      throw new HttpError(502, "inkus_questions_failed", [message]);
+    } finally {
+      await client?.close?.();
+    }
+    return discoveryState(store);
+  },
+
+  "POST /api/adapters/inkus/answers": async (_req, store) => {
+    const databaseId = options.inkusDatabases?.answers;
+    if (!options.inkus || !databaseId) throw new HttpError(409, "answers_db_not_configured");
+    const map = requireLifeMap(store);
+    const catalog = activeCatalog(store);
+    if (catalog.source !== "inkus") throw new HttpError(409, "inkus_catalog_not_active");
+    let client: (InkusClient & { close?: () => Promise<void> }) | undefined;
+    try {
+      client = await options.inkus();
+      const result = await syncAnswers({ client, databaseId, catalog, answers: store.getAnswers(), lifeMap: map });
+      store.createSnapshot("before_answer_sync");
+      store.replaceAnswers(result.answers);
+      const at = new Date().toISOString();
+      store.setSetting("discovery.inkusAnswerSync", { at, report: result.report });
+      store.addDecision("sync", { source: "inkus-answers" }, result.report);
+    } catch (error) {
+      throw new HttpError(502, "inkus_answers_failed", [error instanceof Error ? error.message : String(error)]);
+    } finally {
+      await client?.close?.();
+    }
     return discoveryState(store);
   },
 
@@ -625,7 +729,7 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     const body = (await readJson(req)) as { proposalId?: string; action?: FeedbackAction; note?: string };
     const map = requireLifeMap(store);
     const silenced = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
-    const proposal = generateProposals(map, store.getAnswers(), silenced).find((p) => p.id === body.proposalId);
+    const proposal = generateProposals(map, store.getAnswers(), silenced, activeCatalog(store)).find((p) => p.id === body.proposalId);
     if (!proposal) throw new HttpError(404, "proposal_not_found");
     if (!["accept", "decline", "snooze", "edit"].includes(body.action ?? "")) throw new HttpError(400, "invalid_action");
     const now = new Date();
@@ -666,7 +770,7 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     if (!consents.every((d) => LIFE_DOMAINS.includes(d as LifeDomainId))) throw new HttpError(400, "invalid_consents");
     const map = requireLifeMap(store);
     const silenced = store.getSetting<LifeDomainId[]>("secretary.silenced", []);
-    const summary = buildShareSummary(map, generateProposals(map, store.getAnswers(), silenced), store.getProposalFeedback(), {
+    const summary = buildShareSummary(map, generateProposals(map, store.getAnswers(), silenced, activeCatalog(store)), store.getProposalFeedback(), {
       audience: body.audience as LifeContext,
       consents: consents as LifeDomainId[],
       silenced,
@@ -752,7 +856,13 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
 
   "GET /api/adapters/inkus": (_req, store) => ({
     enabled: Boolean(options.inkus),
-    lastSync: store.listDecisions(200).find((d) => d.kind === "sync" && (d.input as { action?: string }).action !== "export") ?? null,
+    // Agent syncs only; the interview databases report in the Discovery step.
+    lastSync:
+      store
+        .listDecisions(200)
+        .find((d) => d.kind === "sync" && (d.input as { source?: string; action?: string }).source === "inkus" && (d.input as { action?: string }).action !== "export") ??
+      null,
+    interview: Boolean(options.inkus && options.inkusDatabases?.questions && options.inkusDatabases?.answers),
   }),
 
   "POST /api/adapters/inkus/sync": async (_req, store) => {
@@ -809,6 +919,8 @@ export interface ServerOptions {
   staticDir?: string;
   /** Opens a connection to Inkus for one sync. Absent means the adapter is disabled. */
   inkus?: () => Promise<InkusClient & { close?: () => Promise<void> }>;
+  /** Inkus databases for the interview: the question catalog and the answers (ADR 0005). */
+  inkusDatabases?: { questions?: string; answers?: string };
 }
 
 export function createApiServer(store: Store, options: ServerOptions = {}): Server {

@@ -1,6 +1,6 @@
 # ADR 0004: Per-item consent for life-map data in Inkus
 
-- **Status:** accepted (consent stored in PR "adaptive discovery"; pushing consented items is a follow-up)
+- **Status:** accepted; amended by [ADR 0005](0005-inkus-interview-source.md): with the Inkus question catalog, every answer is written to Inkus. The per-answer switch below applies to the built-in catalog.
 - **Date:** 2026-09-26
 - **Amends:** [ADR 0003](0003-inkus-editable-mirror.md), which synced agent definitions only
 - **Code:** `packages/discovery` (`Answer.syncToInkus`), `POST /api/discovery/answers/sync`
