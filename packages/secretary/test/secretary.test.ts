@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { demoLifeMap } from "@brad/domain";
 import { toAnswer, type Answer, type AnswerInput } from "@brad/discovery";
-import { MAX_FOCUS, agencyMetrics, generateProposals, planFocus } from "../src";
+import { MAX_FOCUS, agencyMetrics, buildShareSummary, generateProposals, inContext, planFocus } from "../src";
 
 let n = 0;
 const ans = (input: AnswerInput, status: Answer["status"] = "self_reported"): Answer => {
@@ -92,3 +92,37 @@ describe("planFocus (RF10)", () => {
     expect(b.focus.map((p) => p.id)).toEqual(a.focus.map((p) => p.id));
   });
 });
+
+describe("contexts and the summary to share", () => {
+  const proposals = generateProposals(demoLifeMap, answered);
+
+  it("filters proposals to one context", () => {
+    expect(inContext(demoLifeMap, proposals, "work").map((p) => p.id)).toEqual(["work:protect"]);
+    expect(inContext(demoLifeMap, proposals, "personal").map((p) => p.domain)).not.toContain("work");
+  });
+
+  it("never lets personal areas into a work summary, whatever the consents", () => {
+    const summary = buildShareSummary(demoLifeMap, proposals, {}, { audience: "work", consents: ["health", "family"], now: NOW });
+    expect(summary.lines.map((l) => l.domain)).toEqual(["work", "study"]);
+    expect(summary.lines[0]).toMatchObject({ focus: "protect", protected: true });
+    expect(summary.excluded).toContainEqual({ domain: "health", reason: "other_context" });
+    expect(summary.excluded).toContainEqual({ domain: "family", reason: "other_context" });
+  });
+
+  it("leaves health and finances out of a personal summary until the owner consents for this one", () => {
+    const without = buildShareSummary(demoLifeMap, proposals, {}, { audience: "personal", consents: [], now: NOW });
+    expect(without.lines.map((l) => l.domain)).not.toContain("health");
+    expect(without.excluded).toContainEqual({ domain: "health", reason: "sensitive" });
+    expect(without.excluded).toContainEqual({ domain: "finances", reason: "sensitive" });
+    const withHealth = buildShareSummary(demoLifeMap, proposals, {}, { audience: "personal", consents: ["health"], now: NOW });
+    expect(withHealth.lines.find((l) => l.domain === "health")).toMatchObject({ focus: "show_options" });
+    expect(withHealth.excluded).not.toContainEqual({ domain: "health", reason: "sensitive" });
+  });
+
+  it("carries goals and focus only, never the owner's answers, and is deterministic", () => {
+    const a = buildShareSummary(demoLifeMap, proposals, {}, { audience: "personal", consents: ["health"], now: NOW });
+    expect(JSON.stringify(a)).not.toContain("Dinner together");
+    expect(buildShareSummary(demoLifeMap, proposals, {}, { audience: "personal", consents: ["health"], now: NOW })).toEqual(a);
+  });
+});
+

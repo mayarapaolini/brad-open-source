@@ -119,10 +119,39 @@ try {
   assert(true, "accepting is recorded and counted as the owner's choice");
   await capture(page, 3000);
 
-  await page.getByTestId("step-lifeMap").click();
-  await capture(page, 1800);
+  // Personal and work stay apart: the work view shows only work, and a summary leaves sensitive areas out.
+  await page.getByTestId("secretary-context-work").click();
+  await page.waitForFunction(() => !document.querySelector('[data-testid="proposal-health:organise"]'));
+  assert((await page.getByTestId("proposal-work:ask_preserve").count()) === 1, "the work view shows only work proposals");
+  await page.getByTestId("secretary-context-all").click();
+  await page.getByTestId("proposal-health:organise").waitFor();
+  const sharePanel = page.getByTestId("share-panel");
+  await sharePanel.getByTestId("share-prepare").click();
+  await sharePanel.getByTestId("share-text").waitFor();
+  assert(
+    !(await sharePanel.getByTestId("share-text").innerText()).includes("Health") &&
+      (await sharePanel.getByTestId("share-excluded").innerText()).includes("Health left out: it is sensitive"),
+    "a summary to share leaves health out by default and says why",
+  );
+  await sharePanel.getByTestId("share-consent-health").check();
+  await sharePanel.getByTestId("share-prepare").click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="share-text"]')?.textContent?.includes("Health"));
+  assert(
+    !(await sharePanel.getByTestId("share-text").innerText()).includes("Sleep before midnight"),
+    "health goes in only with consent for this summary, and never with the owner's answers",
+  );
+  await sharePanel.scrollIntoViewIfNeeded();
+  await capture(page, 3000);
 
-  await page.getByTestId("step-agents").click();
+  // Change a goal: the previous life map is kept as a version.
+  await page.getByTestId("step-lifeMap").click();
+  const workGoal = page.locator(".goals label").filter({ hasText: "Work" }).locator("input");
+  const originalWorkGoal = await workGoal.inputValue();
+  await workGoal.fill("Ship the Q3 roadmap");
+  await capture(page, 1800);
+  await page.getByRole("button", { name: /Save/ }).click();
+  await page.getByTestId("generate-agents").waitFor();
+
   await page.getByTestId("generate-agents").click();
   const cards = page.locator("article.card.agent");
   await cards.first().waitFor();
@@ -246,6 +275,36 @@ try {
   await page.evaluate(() => window.scrollTo(0, 0));
   await capture(page, 2600);
 
+  // Letting it act in family too mixes personal and work: denied until the owner allows a bridge.
+  await orchestrator.getByTestId("edit-agent").click();
+  await orchestrator.getByTestId("edit-action-family").check();
+  await orchestrator.getByTestId("edit-save").click();
+  await orchestrator.getByTestId("context-bridge").waitFor();
+  const orchestratorId = (await (await fetch(`${BASE}/api/agents`)).json()).agents.find((a) => a.name === "Demo Life Orchestrator").id;
+  const askPolicy = async () =>
+    (
+      await (
+        await fetch(`${BASE}/api/simulate/policy`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            request: { agentId: orchestratorId, capability: "read_calendar", domain: "work" },
+            assumeState: "approved",
+            assumeGrant: true,
+          }),
+        })
+      ).json()
+    ).decision;
+  assert((await askPolicy()).decidedBy === "context_boundary", "an agent spanning personal and work is denied by the context rule");
+  await orchestrator.getByTestId("context-bridge").click();
+  await page.waitForFunction(async (base) => {
+    const res = await fetch(`${base}/api/lifemap`);
+    return ((await res.json()).lifeMap.boundaries.contextBridges ?? []).length === 1;
+  }, BASE);
+  assert((await askPolicy()).outcome !== "deny", "the owner's bridge lets it act across contexts");
+  await orchestrator.scrollIntoViewIfNeeded();
+  await capture(page, 2600);
+
   // Import: preview the diff, fix a UTC time zone, apply, then undo.
   const exported = await (await fetch(`${BASE}/api/export`)).json();
   exported.lifeMap.boundaries.timeZone = "UTC";
@@ -273,6 +332,19 @@ try {
   await page.getByTestId("import-undo").waitFor({ state: "detached" });
   const afterUndo = await (await fetch(`${BASE}/api/lifemap`)).json();
   assert(afterUndo.lifeMap.assessments[0].satisfaction === 5, "undo restores the previous version");
+
+  // Restore only the life map from before the goal change, then undo that restore.
+  await page.getByTestId("step-audit").click();
+  const goalVersion = page.getByTestId("snapshot-list").locator("li").filter({ hasText: "before a life map change" }).last();
+  await goalVersion.getByTestId("snapshot-restore-lifemap").click();
+  await page.getByTestId("restore-undo").waitFor();
+  const workGoalNow = async () =>
+    (await (await fetch(`${BASE}/api/lifemap`)).json()).lifeMap.assessments.find((a) => a.domain === "work").goal;
+  assert((await workGoalNow()) === originalWorkGoal, "an earlier life map version can be restored on its own");
+  await capture(page, 2600);
+  await page.getByTestId("restore-undo").click();
+  await page.getByTestId("restore-undo").waitFor({ state: "detached" });
+  assert((await workGoalNow()) === "Ship the Q3 roadmap", "the restore can be undone");
 
   await page.getByTestId("lang-pt").click();
   await page.getByTestId("step-simulation").click();

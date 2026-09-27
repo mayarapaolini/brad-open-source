@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { demoInbox, type AgentDefinition, type DecisionRecord, type LifeDomainId } from "@brad/domain";
 import { agentLabel } from "../agentLabel";
 import type { Suggestion } from "@brad/priority-engine";
-import { api, type SnapshotInfo } from "../api";
+import { api, type RestoreScope, type SnapshotInfo } from "../api";
 import { describeSuggestion } from "../suggestions";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/en";
@@ -17,7 +17,7 @@ export function Audit({
 }: {
   onError: (e: unknown) => void;
   agents: AgentDefinition[];
-  onRestore: (snapshotId: number) => void;
+  onRestore: (snapshotId: number, scope: RestoreScope) => void;
 }) {
   const { t, lang } = useI18n();
   const [records, setRecords] = useState<DecisionRecord[] | null>(null);
@@ -127,8 +127,14 @@ export function Audit({
           proposal: String(input.proposalId),
           action: t(`secretary.feedback.${input.action}` as MessageKey),
         });
+      case "share": {
+        const included = (result.included as LifeDomainId[]).map((d) => t(`domain.${d}`)).join(", ") || "—";
+        const excluded = (result.excluded as { domain: LifeDomainId }[]).map((e) => t(`domain.${e.domain}`)).join(", ") || "—";
+        return t("audit.share", { audience: t(`context.${String(input.audience)}` as MessageKey), included, excluded });
+      }
       case "import":
-        if (input.action === "restore") return t("audit.restore", { id: Number(input.snapshotId) });
+        if (input.action === "restore")
+          return t(`audit.restore.${String(input.scope ?? "all")}` as MessageKey, { id: Number(input.snapshotId) });
         return t("audit.import", { agents: Number(result.agents ?? 0), grants: Number(result.grants ?? 0) });
     }
   };
@@ -165,10 +171,26 @@ export function Audit({
               <li key={s.id}>
                 <span className="muted small tabular">v{s.id}</span>
                 <span className="badge kind-import">{t(`audit.snapshot.${s.reason}` as MessageKey)}</span>
-                <span className="small">{t("audit.snapshotSummary", { agents: s.agents, grants: s.grants })}</span>
-                <button className="link" onClick={() => onRestore(s.id)} data-testid="snapshot-restore">
-                  {t("audit.restoreButton")}
-                </button>
+                <span className="muted small">{formatTime(s.createdAt)}</span>
+                <span className="small">
+                  {t("audit.snapshotSummary", { agents: s.agents, grants: s.grants })}
+                  {" · "}
+                  {t("audit.snapshotLifeMap", { people: s.people, goals: s.goals })}
+                  {s.answers !== null && ` · ${t("audit.snapshotAnswers", { answers: s.answers })}`}
+                </span>
+                <span className="restore-actions">
+                  <button className="link" onClick={() => onRestore(s.id, "all")} data-testid="snapshot-restore">
+                    {t("audit.restoreButton")}
+                  </button>
+                  <button className="link" onClick={() => onRestore(s.id, "lifeMap")} data-testid="snapshot-restore-lifemap">
+                    {t("audit.restoreLifeMap")}
+                  </button>
+                  {s.answers !== null && (
+                    <button className="link" onClick={() => onRestore(s.id, "answers")} data-testid="snapshot-restore-answers">
+                      {t("audit.restoreAnswers")}
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ol>

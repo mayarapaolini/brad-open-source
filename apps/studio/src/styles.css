@@ -267,3 +267,34 @@ button.link.edit { padding-left: 0; }
 .why-box { background: var(--panel); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
 .checkin { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--accent-soft); padding: 10px 14px; border-radius: var(--radius); margin: 10px 0 16px; }
 .silence { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.share {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.share-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+.restore-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.bridge {
+  display: block;
+  margin: 4px 0;
+}

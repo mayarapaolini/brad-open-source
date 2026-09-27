@@ -108,7 +108,15 @@ function QuestionCard({
   );
 }
 
-export function Discovery({ onError, onNext }: { onError: (e: unknown) => void; onNext: () => void }) {
+export function Discovery({
+  sensitive,
+  onError,
+  onNext,
+}: {
+  sensitive: LifeDomainId[];
+  onError: (e: unknown) => void;
+  onNext: () => void;
+}) {
   const { t, lang } = useI18n();
   const [state, setState] = useState<DiscoveryState | null>(null);
   const [domain, setDomain] = useState<LifeDomainId | null>(null);
@@ -131,6 +139,13 @@ export function Discovery({ onError, onNext }: { onError: (e: unknown) => void; 
     } catch (e) {
       onError(e instanceof ApiError ? new ApiError(t(`discoveryError.${e.message}` as MessageKey)) : e);
     }
+  };
+
+  // Health, finances and other sensitive areas need a second, explicit yes before an answer may go to Inkus.
+  const setSync = async (answerId: string, answerDomain: LifeDomainId, on: boolean) => {
+    const needsConfirm = on && sensitive.includes(answerDomain);
+    if (needsConfirm && !window.confirm(t("discovery.syncSensitiveConfirm", { domain: t(`domain.${answerDomain}`) }))) return;
+    await run(api.setAnswerSync(answerId, on, needsConfirm));
   };
 
   if (!state) return null;
@@ -207,7 +222,8 @@ export function Discovery({ onError, onNext }: { onError: (e: unknown) => void; 
                             <input
                               type="checkbox"
                               checked={a.syncToInkus}
-                              onChange={(e) => void run(api.setAnswerSync(a.id, e.target.checked))}
+                              onChange={(e) => void setSync(a.id, a.domain, e.target.checked)}
+                              data-testid="answer-sync"
                             />{" "}
                             {t("discovery.syncInkus")}
                           </label>

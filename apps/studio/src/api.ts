@@ -6,13 +6,14 @@ import type {
   ConsentGrant,
   DecisionRecord,
   ImportPlan,
+  LifeContext,
   LifeDomainId,
   LifeMap,
   TransitionCheck,
 } from "@brad/domain";
 import type { ActionRequest, PolicyDecision } from "@brad/policy-engine";
 import type { SyncReport } from "@brad/adapter-inkus";
-import type { AgencyMetrics, FeedbackAction, FocusPlan, Load, ProposalFeedback } from "@brad/secretary";
+import type { AgencyMetrics, FeedbackAction, FocusPlan, Load, ProposalFeedback, ShareSummary } from "@brad/secretary";
 import type { Answer, AnswerInput, DomainPath, Question, SynthesisItem, Verdict } from "@brad/discovery";
 import type { RankedItem, Suggestion, Tier } from "@brad/priority-engine";
 
@@ -60,11 +61,11 @@ export const api = {
       ...options,
     }),
   snapshots: () => call<{ snapshots: SnapshotInfo[] }>("GET", "/api/snapshots"),
-  restoreSnapshot: (snapshotId: number) =>
+  restoreSnapshot: (snapshotId: number, scope: RestoreScope = "all") =>
     call<{ lifeMap: LifeMap | null; agents: AgentDefinition[]; grants: ConsentGrant[]; snapshotId: number }>(
       "POST",
       "/api/snapshots/restore",
-      { snapshotId },
+      { snapshotId, scope },
     ),
   simulatePriority: () => call<{ ranked: RankedItem[]; decisionId: number }>("POST", "/api/simulate/priority"),
   simulatePolicy: (body: { request: ActionRequest; assumeState?: AgentState; assumeGrant?: boolean; now?: string }) =>
@@ -90,16 +91,21 @@ export const api = {
   answer: (input: AnswerInput) => call<DiscoveryState>("POST", "/api/discovery/answers", input),
   confirmSynthesis: (itemId: string, verdict: Verdict, correction?: string) =>
     call<DiscoveryState>("POST", "/api/discovery/synthesis", { itemId, verdict, correction }),
-  setAnswerSync: (answerId: string, syncToInkus: boolean) =>
-    call<DiscoveryState>("POST", "/api/discovery/answers/sync", { answerId, syncToInkus }),
+  setAnswerSync: (answerId: string, syncToInkus: boolean, confirmSensitive = false) =>
+    call<DiscoveryState>("POST", "/api/discovery/answers/sync", { answerId, syncToInkus, confirmSensitive }),
   secretary: () => call<SecretaryState>("GET", "/api/secretary"),
   proposalFeedback: (proposalId: string, action: FeedbackAction, note?: string) =>
     call<SecretaryState>("POST", "/api/secretary/feedback", { proposalId, action, note }),
   silence: (domain: LifeDomainId, silenced: boolean) => call<SecretaryState>("POST", "/api/secretary/silence", { domain, silenced }),
   checkin: (load: Load) => call<SecretaryState>("POST", "/api/secretary/checkin", { load }),
+  secretaryContext: (context: LifeContext | "all") => call<SecretaryState>("POST", "/api/secretary/context", { context }),
+  shareSummary: (audience: LifeContext, consents: LifeDomainId[]) =>
+    call<ShareSummary>("POST", "/api/share/summary", { audience, consents }),
   getDecisions: () => call<{ decisions: DecisionRecord[] }>("GET", "/api/decisions"),
   reset: () => call<{ ok: true }>("DELETE", "/api/data"),
 };
+
+export type RestoreScope = "all" | "lifeMap" | "answers";
 
 export interface SnapshotInfo {
   id: number;
@@ -107,6 +113,10 @@ export interface SnapshotInfo {
   reason: string;
   agents: number;
   grants: number;
+  /** Null for versions saved before answers were kept. */
+  answers: number | null;
+  people: number;
+  goals: number;
 }
 
 export interface DiscoveryState {
@@ -117,6 +127,7 @@ export interface DiscoveryState {
 }
 
 export interface SecretaryState {
+  context: LifeContext | "all";
   plan: FocusPlan;
   feedback: Record<string, ProposalFeedback>;
   metrics: AgencyMetrics;

@@ -268,6 +268,9 @@ function PolicyPanel({ agents, onError }: { agents: AgentDefinition[]; onError: 
       if (params[key] === "cross_cutting") params[key] = t("agents.crossCutting");
       else if (params[key] && params[key] !== "unknown") params[key] = t(`domain.${params[key] as LifeDomainId}`);
     }
+    for (const key of ["agentContext", "requestContext"]) {
+      if (params[key]) params[key] = params[key].split("+").map((c) => t(`context.${c}` as MessageKey)).join(" + ");
+    }
     if (params.capability) params.capability = t(`capability.${params.capability as Capability}`);
     if (params.state && params.state !== "unknown") params.state = t(`state.${params.state as AgentState}`);
     return t(`policyReason.${d.decidedBy}`, params);

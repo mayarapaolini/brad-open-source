@@ -24,6 +24,9 @@
 - [x] correction loop (owner feedback → one suggested, previewed life-map change)
 - [x] adaptive discovery with a confirmable synthesis
 - [x] secretary proposals: at most three focuses with evidence and trade-offs, one protected area, optional weekly check-in, no external action
+- [x] personal / work context separation (policy rule, owner bridges, Secretary filter)
+- [x] summary to share with per-summary consent for sensitive areas
+- [x] version history for the life map and answers, with partial restore and undo
 
 ## Milestone 3 — Brad Multiple Agents panel
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { emptyLifeMap, type AgentDefinition, type ConsentGrant, type ImportPlan, type LifeMap } from "@brad/domain";
 import { ImportPreview } from "./ImportPreview";
-import { api, ApiError } from "./api";
+import { api, ApiError, type RestoreScope } from "./api";
 import { useI18n, type Lang } from "./i18n";
 import { Agents } from "./steps/Agents";
 import { Audit } from "./steps/Audit";
@@ -86,7 +86,7 @@ export function App() {
   };
 
   const [pendingImport, setPendingImport] = useState<{ data: unknown; plan: ImportPlan; alreadyImported: boolean } | null>(null);
-  const [undoSnapshot, setUndoSnapshot] = useState<number | null>(null);
+  const [undoSnapshot, setUndoSnapshot] = useState<{ id: number; scope: RestoreScope; kind: "import" | "restore" } | null>(null);
 
   const applyState = (res: { lifeMap: LifeMap | null; agents: AgentDefinition[]; grants: ConsentGrant[] }) => {
     setLifeMap(res.lifeMap ?? emptyLifeMap());
@@ -114,18 +114,19 @@ export function App() {
     try {
       const res = await api.importData(pendingImport.data, { timeZone, force: pendingImport.alreadyImported });
       applyState(res);
-      setUndoSnapshot(res.snapshotId);
+      setUndoSnapshot({ id: res.snapshotId, scope: "all", kind: "import" });
       setPendingImport(null);
     } catch (e) {
       report(e);
     }
   };
 
-  const restoreSnapshot = async (snapshotId: number) => {
+  const restoreSnapshot = async (snapshotId: number, scope: RestoreScope = "all", undoing = false) => {
     try {
-      const res = await api.restoreSnapshot(snapshotId);
+      const res = await api.restoreSnapshot(snapshotId, scope);
       applyState(res);
-      setUndoSnapshot(null);
+      // A restore can itself be undone once; undoing does not offer another undo.
+      setUndoSnapshot(undoing ? null : { id: res.snapshotId, scope, kind: "restore" });
     } catch (e) {
       report(e);
     }
@@ -239,16 +240,20 @@ export function App() {
       )}
       {undoSnapshot !== null && (
         <div className="undo" role="status">
-          {t("importPreview.applied")}{" "}
-          <button className="link" onClick={() => restoreSnapshot(undoSnapshot)} data-testid="import-undo">
-            {t("importPreview.undo")}
+          {t(undoSnapshot.kind === "import" ? "importPreview.applied" : "restore.applied")}{" "}
+          <button
+            className="link"
+            onClick={() => restoreSnapshot(undoSnapshot.id, undoSnapshot.scope, true)}
+            data-testid={undoSnapshot.kind === "import" ? "import-undo" : "restore-undo"}
+          >
+            {t(undoSnapshot.kind === "import" ? "importPreview.undo" : "restore.undo")}
           </button>
         </div>
       )}
 
       <main>
         {step === "diagnostic" && <Diagnostic lifeMap={lifeMap} onChange={edit} onNext={() => save("discovery")} />}
-        {step === "discovery" && <Discovery key={epoch} onError={report} onNext={() => setStep("secretary")} />}
+        {step === "discovery" && <Discovery key={epoch} sensitive={lifeMap.boundaries.sensitiveDomains} onError={report} onNext={() => setStep("secretary")} />}
         {step === "secretary" && (
           <Secretary key={epoch} lifeMap={lifeMap} onError={report} onAnswer={() => setStep("discovery")} />
         )}
@@ -258,6 +263,8 @@ export function App() {
             agents={agents}
             grants={grants}
             forbidden={lifeMap.boundaries.forbiddenCapabilities}
+            lifeMap={lifeMap}
+            onLifeMapChanged={setLifeMap}
             onGenerate={generate}
             onChanged={refreshAgents}
             onNext={() => setStep("simulation")}

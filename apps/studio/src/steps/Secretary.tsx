@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { LIFE_DOMAINS, type LifeMap } from "@brad/domain";
+import { LIFE_DOMAINS, domainContext, type LifeContext, type LifeDomainId, type LifeMap } from "@brad/domain";
 import { getQuestion } from "@brad/discovery";
-import type { Evidence, Load, Proposal } from "@brad/secretary";
+import type { Evidence, Load, Proposal, ShareSummary } from "@brad/secretary";
 import { api, type SecretaryState } from "../api";
 import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/en";
@@ -119,6 +119,101 @@ function ProposalCard({
   );
 }
 
+/** A summary the owner copies and shares. Sensitive areas need a tick for this summary only. */
+function SharePanel({ lifeMap, onError }: { lifeMap: LifeMap; onError: (e: unknown) => void }) {
+  const { t } = useI18n();
+  const [audience, setAudience] = useState<LifeContext>("personal");
+  const [consents, setConsents] = useState<LifeDomainId[]>([]);
+  const [summary, setSummary] = useState<ShareSummary | null>(null);
+  const [copied, setCopied] = useState(false);
+  const sensitive = lifeMap.boundaries.sensitiveDomains.filter((d) => domainContext(lifeMap.boundaries, d) === audience);
+
+  const prepare = async () => {
+    try {
+      setSummary(await api.shareSummary(audience, consents.filter((d) => sensitive.includes(d))));
+      setCopied(false);
+    } catch (e) {
+      onError(e);
+    }
+  };
+  const text = summary
+    ? summary.lines
+        .map((l) =>
+          [
+            `• ${t(`domain.${l.domain}`)}`,
+            l.goal && t("share.goal", { goal: l.goal }),
+            l.focus && t("share.focus", { focus: t(`proposal.${l.focus}` as MessageKey, { domain: t(`domain.${l.domain}`) }) }),
+          ]
+            .filter(Boolean)
+            .join(" — "),
+        )
+        .join("\n")
+    : "";
+
+  return (
+    <div className="share" data-testid="share-panel">
+      <h3>{t("share.title")}</h3>
+      <p className="muted small">{t("share.intro")}</p>
+      <div className="segmented">
+        {(["personal", "work"] as LifeContext[]).map((a) => (
+          <button
+            key={a}
+            className={`small-btn ${audience === a ? "primary" : ""}`}
+            onClick={() => {
+              setAudience(a);
+              setSummary(null);
+            }}
+            data-testid={`share-audience-${a}`}
+          >
+            {t(`share.audience.${a}` as MessageKey)}
+          </button>
+        ))}
+      </div>
+      {sensitive.map((d) => (
+        <label key={d} className="check small">
+          <input
+            type="checkbox"
+            checked={consents.includes(d)}
+            onChange={(e) => {
+              setConsents(e.target.checked ? [...consents, d] : consents.filter((c) => c !== d));
+              setSummary(null);
+            }}
+            data-testid={`share-consent-${d}`}
+          />{" "}
+          {t("share.consent", { domain: t(`domain.${d}`) })}
+        </label>
+      ))}
+      <div>
+        <button className="small-btn primary" onClick={() => void prepare()} data-testid="share-prepare">
+          {t("share.prepare")}
+        </button>
+      </div>
+      {summary && (
+        <>
+          <pre className="share-text" data-testid="share-text">
+            {text || t("share.nothing")}
+          </pre>
+          {text && (
+            <button
+              className="small-btn"
+              onClick={() => void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => setCopied(false))}
+            >
+              {copied ? t("share.copied") : t("share.copy")}
+            </button>
+          )}
+          {summary.excluded.length > 0 && (
+            <ul className="small muted" data-testid="share-excluded">
+              {summary.excluded.map((e) => (
+                <li key={e.domain}>{t(`share.excluded.${e.reason}` as MessageKey, { domain: t(`domain.${e.domain}`) })}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Secretary({
   lifeMap,
   onError,
@@ -152,6 +247,18 @@ export function Secretary({
     <section>
       <h2>{t("secretary.title")}</h2>
       <p>{t("secretary.intro")}</p>
+      <div className="segmented" role="group" aria-label={t("secretary.contextLabel")}>
+        {(["all", "personal", "work"] as const).map((c) => (
+          <button
+            key={c}
+            className={`small-btn ${state.context === c ? "primary" : ""}`}
+            onClick={() => void run(api.secretaryContext(c))}
+            data-testid={`secretary-context-${c}`}
+          >
+            {t(`secretary.context.${c}` as MessageKey)}
+          </button>
+        ))}
+      </div>
 
       {state.weeklyDue && (
         <div className="checkin" data-testid="weekly-checkin">
@@ -214,6 +321,7 @@ export function Secretary({
           </label>
         ))}
       </div>
+      <SharePanel lifeMap={lifeMap} onError={onError} />
       {state.checkins.length > 0 && (
         <p className="muted small">
           {t("secretary.loadHistory")}{" "}

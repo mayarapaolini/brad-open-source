@@ -4,6 +4,7 @@ import {
   RELATIONSHIPS,
   type Boundaries,
   type Capability,
+  workDomains,
   type LifeDomainId,
   type LifeMap,
   type Person,
@@ -218,6 +219,20 @@ export function LifeMapEditor({ lifeMap, onChange, onNext }: Props) {
               {t(`domain.${d}`)}
             </label>
           ))}
+        </fieldset>
+        <fieldset>
+          <legend>{t("lifeMap.work")}</legend>
+          {LIFE_DOMAINS.map((d) => (
+            <label key={d} className="check">
+              <input
+                type="checkbox"
+                checked={workDomains(boundaries).includes(d)}
+                onChange={() => setBoundaries({ workDomains: toggle([...workDomains(boundaries)], d) })}
+              />{" "}
+              {t(`domain.${d}`)}
+            </label>
+          ))}
+          <p className="muted small">{t("lifeMap.workHint")}</p>
         </fieldset>
       </div>
 
