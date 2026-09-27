@@ -80,7 +80,16 @@ describe("Inkus sync API", () => {
     expect(edit.json.agent).toMatchObject({ requestedCapabilities: ["read_calendar"], excludedByBoundary: ["make_payment"] });
     const pushed = await call("POST", "/api/adapters/inkus/sync");
     expect(pushed.json.report.pushed).toEqual([orchestrator.id]);
+    // Written as a draft: the active version only changes when the owner activates it.
+    expect((await fake.getActiveSpec(orchestrator.inkus.actorId))?.mission).not.toBe("Edited in Brad");
+    const drafted = (pushed.json.agents as { id: string; inkus: { draft?: unknown } }[]).find((a) => a.id === orchestrator.id)!;
+    expect(drafted.inkus.draft).toBeTruthy();
+    const activated = await call("POST", "/api/adapters/inkus/activate", { agentId: orchestrator.id });
+    expect(activated.json.agent.inkus.draft).toBeUndefined();
     expect((await fake.getActiveSpec(orchestrator.inkus.actorId))?.mission).toBe("Edited in Brad");
+    expect((await call("POST", "/api/adapters/inkus/activate", { agentId: orchestrator.id })).json.error).toBe("no_draft");
+    const decisions = (await call("GET", "/api/decisions")).json.decisions as { kind: string; input: { action?: string } }[];
+    expect(decisions[0]).toMatchObject({ kind: "sync", input: { action: "activate" } });
 
     // Edit in Inkus → applied in Brad.
     await fake.editInInkus(orchestrator.inkus.actorId, { mission: "Edited in Inkus" });

@@ -312,3 +312,15 @@ button.link.edit { padding-left: 0; }
   background: var(--warn-soft);
   color: var(--warn);
 }
+
+.interview-proposal {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+}
+.badge.draft-inkus {
+  background: var(--warn-soft);
+  color: var(--warn);
+}

@@ -104,4 +104,37 @@ describe("interview from the Inkus catalog", () => {
     const helpAnswer = state.answers.find((a: { questionId: string }) => a.questionId === "help.preference");
     expect(state.changed).toContain(helpAnswer.id);
   });
+
+  it("turns confirmed interview answers into a draft agent version in Inkus, never an active one", async () => {
+    await call("POST", "/api/adapters/inkus/sync"); // links Brad's health agent to the Inkus one
+    await call("POST", "/api/adapters/inkus/answers"); // the health answers now live in Inkus
+    const proposals = (await call("GET", "/api/interview/proposals?lang=pt")).json.proposals as {
+      agentId: string;
+      domain: string;
+      proposed: { goal: string; responsibilities: string[] };
+    }[];
+    const health = proposals.find((p) => p.domain === "health")!;
+    expect(health.proposed.goal).toBe("Dormir melhor");
+    expect(health.proposed.responsibilities[0]).toBe("Preparar rascunhos para sua revisão; nunca enviar");
+
+    const agentBefore = (await call("GET", "/api/agents")).json.agents.find((a: { id: string }) => a.id === health.agentId);
+    const activeBefore = await fake.getActiveSpec(agentBefore.inkus.actorId);
+    const applied = await call("POST", "/api/interview/apply", { agentId: health.agentId, lang: "pt" });
+    expect(applied.status).toBe(200);
+    expect(applied.json).toMatchObject({ linkedAnswers: 2, inkusError: null, agent: { goal: "Dormir melhor" } });
+    expect(applied.json.draft.specId).toBeTruthy();
+    // Hermes still runs the previous version; the draft waits for the owner.
+    expect((await fake.getActiveSpec(agentBefore.inkus.actorId))!.id).toBe(activeBefore!.id);
+    expect(fake.specs.find((s) => s.id === applied.json.draft.specId)).toMatchObject({ status: "draft", mission: "Dormir melhor" });
+    const linked = fake.databases[DEMO_ANSWERS_DB]!.filter((r) => r.fields.agent_id === agentBefore.inkus.actorId);
+    expect(linked).toHaveLength(2);
+    // No grant was created by the interview.
+    expect(applied.json.grants.filter((g: { agentId: string; revokedAt: string | null }) => g.agentId === health.agentId && !g.revokedAt)).toEqual([]);
+
+    expect((await call("POST", "/api/interview/apply", { agentId: health.agentId, lang: "pt" })).json.error).toBe("nothing_to_apply");
+    const activated = await call("POST", "/api/adapters/inkus/activate", { agentId: health.agentId });
+    expect(activated.json.agent.inkus.draft).toBeUndefined();
+    expect((await fake.getActiveSpec(agentBefore.inkus.actorId))!.mission).toBe("Dormir melhor");
+  });
 });
+

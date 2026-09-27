@@ -4,6 +4,7 @@ import {
   FakeInkus,
   capabilitiesFromSpec,
   domainFromSpec,
+  activateDraft,
   exportAgentToInkus,
   seedDemoInkus,
   specFromAgent,
@@ -80,7 +81,7 @@ describe("syncWithInkus", () => {
     expect(report.pushed).toEqual([]);
   });
 
-  it("pushes local edits as a new active version, and never creates Inkus agents on its own", async () => {
+  it("pushes local edits as a new draft version, never activates it, and never creates Inkus agents on its own", async () => {
     const fake = await seedDemoInkus();
     const first = await run(fake, []);
     const family = first.agents.find((a) => a.name === "Demo Family")!;
@@ -103,19 +104,44 @@ describe("syncWithInkus", () => {
 
     expect(second.report.pushed).toEqual([family.id]);
     expect(fake.actors.length).toBe(actorsBefore);
-    const spec = await fake.getActiveSpec(family.inkus!.actorId);
-    expect(spec).toMatchObject({ status: "active", mission: "Edited in Brad" });
-    expect((spec!.capabilities as { brad: { requested: string[] } }).brad.requested).toEqual(["draft_reply"]);
-    expect(second.agents.find((a) => a.id === family.id)?.inkus?.syncedRevision).toBe(1);
+    // The active version (what Hermes runs) is untouched; the edit waits as a draft.
+    expect(await fake.getActiveSpec(family.inkus!.actorId)).toMatchObject({ status: "active", mission: family.goal });
+    const draftSpec = fake.specs.find((s) => s.actor_id === family.inkus!.actorId && s.status === "draft")!;
+    expect(draftSpec).toMatchObject({ mission: "Edited in Brad" });
+    expect((draftSpec.capabilities as { brad: { requested: string[] } }).brad.requested).toEqual(["draft_reply"]);
+    const drafted = second.agents.find((a) => a.id === family.id)!;
+    expect(drafted.inkus).toMatchObject({ syncedRevision: 0, draft: { specId: draftSpec.id, revision: 1 } });
 
-    // Explicit export creates the actor once.
+    // Syncing again neither re-drafts nor pulls the older active version over the edit.
+    const again = await run(fake, second.agents);
+    expect([...again.report.pushed, ...again.report.updated]).toEqual([]);
+
+    // Activation is an explicit owner action.
+    const active = await activateDraft(fake, drafted, NOW);
+    expect(await fake.getActiveSpec(family.inkus!.actorId)).toMatchObject({ status: "active", mission: "Edited in Brad" });
+    expect(active.inkus).toMatchObject({ specId: draftSpec.id, syncedRevision: 1 });
+    expect(active.inkus!.draft).toBeUndefined();
+
+    // Explicit export creates the actor once, with a draft first version.
     const exported = await exportAgentToInkus(fake, bradOnly, "Brad Work", NOW);
     expect(fake.actors.length).toBe(actorsBefore + 1);
-    expect(await fake.getActiveSpec(exported.inkus!.actorId)).toMatchObject({ status: "active", mission: "Ship the roadmap" });
+    expect(await fake.getActiveSpec(exported.inkus!.actorId)).toMatchObject({ status: "draft", mission: "Ship the roadmap" });
     await expect(exportAgentToInkus(fake, exported, "Brad Work", NOW)).rejects.toThrow("already linked");
 
-    const third = await run(fake, [...second.agents, exported]);
+    const third = await run(fake, [...again.agents.filter((a) => a.id !== family.id), active, exported]);
     expect([...third.report.pushed, ...third.report.updated, ...third.report.imported]).toEqual([]);
+  });
+
+  it("notices when the owner activates Brad's draft directly in Inkus", async () => {
+    const fake = await seedDemoInkus();
+    const first = await run(fake, []);
+    const family = first.agents.find((a) => a.name === "Demo Family")!;
+    const second = await run(fake, [...first.agents.filter((a) => a.id !== family.id), { ...family, goal: "Draft me", revision: 1 }]);
+    const draftId = second.agents.find((a) => a.id === family.id)!.inkus!.draft!.specId;
+    await fake.activateSpec(draftId);
+    const third = await run(fake, second.agents);
+    expect(third.report).toMatchObject({ activated: [family.id], updated: [], overwritten: [] });
+    expect(third.agents.find((a) => a.id === family.id)!.inkus).toMatchObject({ specId: draftId, syncedRevision: 1 });
   });
 
   it("links a Brad agent to the Inkus agent of the same domain instead of duplicating it", async () => {

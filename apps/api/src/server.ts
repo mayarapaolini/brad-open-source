@@ -11,8 +11,8 @@ import {
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
-import { exportAgentToInkus, loadCatalogRecords, syncAnswers, syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
-import { generateDraftAgents, reconcileAgents } from "@brad/agent-factory";
+import { activateDraft, exportAgentToInkus, loadCatalogRecords, pushDraft, syncAnswers, syncWithInkus, type InkusClient } from "@brad/adapter-inkus";
+import { generateDraftAgents, proposeFromInterview, reconcileAgents } from "@brad/agent-factory";
 import {
   BUILTIN_CATALOG,
   currentAnswer,
@@ -708,6 +708,66 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     return discoveryState(store);
   },
 
+  "GET /api/interview/proposals": (req, store) => {
+    const map = requireLifeMap(store);
+    const lang = new URL(req.url ?? "/", "http://localhost").searchParams.get("lang") === "en" ? "en" : "pt";
+    const answers = store.getAnswers();
+    const catalog = activeCatalog(store);
+    const proposals = store
+      .getAgents()
+      .map((agent) => proposeFromInterview(agent, map, answers, catalog, lang))
+      .filter((p) => p !== null && p.changed);
+    return { proposals };
+  },
+
+  "POST /api/interview/apply": async (req, store) => {
+    const body = (await readJson(req)) as { agentId?: string; lang?: string };
+    const map = requireLifeMap(store);
+    const agent = store.getAgents().find((a) => a.id === body.agentId);
+    if (!agent) throw new HttpError(404, "agent_not_found");
+    const answers = store.getAnswers();
+    const proposal = proposeFromInterview(agent, map, answers, activeCatalog(store), body.lang === "en" ? "en" : "pt");
+    if (!proposal?.changed) throw new HttpError(409, "nothing_to_apply");
+    const now = new Date().toISOString();
+    // The owner's click is the explicit confirmation. Requested capabilities are never granted here.
+    let next: AgentDefinition = {
+      ...agent,
+      ...proposal.proposed,
+      excludedByBoundary: [...new Set([...agent.excludedByBoundary, ...proposal.excludedByBoundary])],
+      revision: (agent.revision ?? 0) + 1,
+    };
+    store.saveAgent(next);
+    const revoked = revokeUnneeded(store, next, now, "interview");
+
+    // A linked agent gets a new **draft** version in Inkus, tied to the answers it came from.
+    let linkedAnswers = 0;
+    let inkusError: string | null = null;
+    if (options.inkus && next.inkus) {
+      let client: (InkusClient & { close?: () => Promise<void> }) | undefined;
+      try {
+        client = await options.inkus();
+        next = await pushDraft(client, next, displayName(next), next.inkus!.actorId, now);
+        store.saveAgent(next);
+        for (const a of answers) {
+          if (!proposal.basis.includes(a.id) || !a.inkus) continue;
+          await client.updateRecord(a.inkus.recordId, { agent_id: next.inkus!.actorId });
+          linkedAnswers += 1;
+        }
+      } catch (error) {
+        // The local change stays; the next agent sync writes the draft.
+        inkusError = error instanceof Error ? error.message : String(error);
+      } finally {
+        await client?.close?.();
+      }
+    }
+    store.addDecision(
+      "lifecycle",
+      { action: "interview", agentId: agent.id, basis: proposal.basis },
+      { ok: true, revokedGrants: revoked, draftSpecId: next.inkus?.draft?.specId ?? null, linkedAnswers, inkusError },
+    );
+    return { agent: next, grants: store.getGrants(), draft: next.inkus?.draft ?? null, linkedAnswers, inkusError };
+  },
+
   "POST /api/discovery/synthesis": async (req, store) => {
     const body = (await readJson(req)) as { itemId?: string; verdict?: Verdict; correction?: string };
     const state = discoveryState(store);
@@ -854,13 +914,39 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
     }
   },
 
+  "POST /api/adapters/inkus/activate": async (req, store) => {
+    if (!options.inkus) throw new HttpError(409, "adapter_disabled");
+    const body = (await readJson(req)) as { agentId?: string };
+    const agent = store.getAgents().find((a) => a.id === body.agentId);
+    if (!agent) throw new HttpError(404, "agent_not_found");
+    if (!agent.inkus?.draft) throw new HttpError(409, "no_draft");
+    let client: InkusClient & { close?: () => Promise<void> };
+    try {
+      client = await options.inkus();
+    } catch (error) {
+      throw new HttpError(502, "inkus_unreachable", [error instanceof Error ? error.message : String(error)]);
+    }
+    try {
+      // The owner's explicit action: only now does the version become the one Hermes runs.
+      const draft = agent.inkus.draft;
+      const activated = await activateDraft(client, agent, new Date().toISOString());
+      store.saveAgent(activated);
+      store.addDecision("sync", { source: "inkus", action: "activate", agentId: agent.id }, { specId: draft.specId, specVersion: draft.specVersion });
+      return { agent: activated };
+    } catch (error) {
+      throw new HttpError(502, "inkus_sync_failed", [error instanceof Error ? error.message : String(error)]);
+    } finally {
+      await client.close?.();
+    }
+  },
+
   "GET /api/adapters/inkus": (_req, store) => ({
     enabled: Boolean(options.inkus),
     // Agent syncs only; the interview databases report in the Discovery step.
     lastSync:
       store
         .listDecisions(200)
-        .find((d) => d.kind === "sync" && (d.input as { source?: string; action?: string }).source === "inkus" && (d.input as { action?: string }).action !== "export") ??
+        .find((d) => d.kind === "sync" && (d.input as { source?: string }).source === "inkus" && !(d.input as { action?: string }).action) ??
       null,
     interview: Boolean(options.inkus && options.inkusDatabases?.questions && options.inkusDatabases?.answers),
   }),

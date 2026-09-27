@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { parseInkusCatalog, toAnswer } from "@brad/discovery";
 import { demoLifeMap } from "@brad/domain";
-import { DEMO_ANSWERS_DB, DEMO_QUESTIONS_DB, FakeInkus, connectInkus, loadCatalogRecords, seedDemoInkus, syncAnswers, syncWithInkus } from "../src";
+import { DEMO_ANSWERS_DB, DEMO_QUESTIONS_DB, FakeInkus, activateDraft, connectInkus, loadCatalogRecords, seedDemoInkus, syncAnswers, syncWithInkus } from "../src";
 
 /** A local MCP server exposing the same tool names and argument shapes as Inkus, backed by the fake. */
 function inkusLikeServer(fake: FakeInkus, token: string): Server {
@@ -126,6 +126,9 @@ describe("MCP Inkus client", () => {
         displayName: (a) => a.name ?? a.id,
       });
       expect(second.report).toMatchObject({ pushed: [orchestrator.id], errors: [] });
+      // Brad writes a draft; activating it is a separate, explicit call.
+      expect(await fake.getActiveSpec(orchestrator.inkus!.actorId)).toMatchObject({ status: "active", version: 1 });
+      await activateDraft(client, second.agents.find((a) => a.id === orchestrator.id)!, "2026-03-10T09:05:00-03:00");
       const spec = await fake.getActiveSpec(orchestrator.inkus!.actorId);
       expect(spec).toMatchObject({ status: "active", version: 2, mission: "Edited over MCP" });
       // Inkus-only fields survived the round trip.
