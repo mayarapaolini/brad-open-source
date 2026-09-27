@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -125,4 +127,24 @@ describe("brad CLI", () => {
     expect(JSON.parse(readFileSync(join(dir, "nested.json"), "utf8")).lifeMap.owner.displayName).toBe(demoLifeMap.owner.displayName);
     expect(err.join("\n")).not.toContain(demoLifeMap.assessments[0]!.goal);
   });
+
+  it("explains a rejected token without printing it", async () => {
+    // Answers like Inkus does for a revoked token.
+    const inkus = createServer((_req, res) => {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 0, error: { code: -32001, message: "Token de API inválido ou revogado." } }));
+    });
+    await new Promise<void>((done) => inkus.listen(0, "127.0.0.1", done));
+    const url = `http://127.0.0.1:${(inkus.address() as AddressInfo).port}/mcp`;
+    try {
+      const code = await brad("inkus check", { BRAD_ADAPTER_INKUS_ENABLED: "true", BRAD_INKUS_MCP_URL: url, BRAD_INKUS_TOKEN: "secret-token-123" });
+      expect(code).toBe(EXIT.problem);
+      const text = [...out, ...err].join("\n");
+      expect(text).toContain("did not accept BRAD_INKUS_TOKEN");
+      expect(text).not.toContain("secret-token-123");
+    } finally {
+      inkus.close();
+    }
+  });
 });
+

@@ -36,7 +36,13 @@ export async function connectInkus(options: McpInkusOptions): Promise<InkusClien
   const transport = new StreamableHTTPClientTransport(new URL(options.url), {
     requestInit: { headers: { Authorization: `Bearer ${options.token}` } },
   });
-  await client.connect(transport);
+  try {
+    await client.connect(transport);
+  } catch (error) {
+    // Release the connection before reporting, so a failed login never leaves a handle open.
+    await client.close().catch(() => undefined);
+    throw error;
+  }
 
   async function call<T>(name: string, args: Record<string, unknown>): Promise<T> {
     const result = await client.callTool({ name, arguments: args });
