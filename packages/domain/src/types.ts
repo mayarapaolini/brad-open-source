@@ -131,6 +131,11 @@ export interface InkusLink {
   syncedRevision: number;
   /** Spec fields Brad does not model, kept so a push never erases them in Inkus. */
   passthrough: Record<string, unknown>;
+  /**
+   * A version Brad wrote to Inkus that is not active yet. Brad never activates on its own:
+   * the owner activates it (in Inkus or with Brad's "activate" action), and only then does Hermes see it.
+   */
+  draft?: { specId: string; specVersion: number; revision: number; createdAt: string };
 }
 
 export interface AgentDefinition {

@@ -28,7 +28,7 @@
 - [x] summary to share with per-summary consent for sensitive areas
 - [x] version history for the life map and answers, with partial restore and undo
 - [x] interview from an editable Inkus question catalog; answers read from and written to Inkus
-- [ ] draft agent specs from confirmed interview answers (always draft; activation is explicit)
+- [x] draft agent specs from confirmed interview answers (always draft; activation is explicit)
 
 ## Milestone 3 — Brad Multiple Agents panel
 

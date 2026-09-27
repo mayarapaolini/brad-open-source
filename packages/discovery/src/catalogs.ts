@@ -13,7 +13,8 @@ export type Slot =
   | "frequency"
   | "autonomy"
   | "competence"
-  | "relatedness";
+  | "relatedness"
+  | "confirmation";
 
 export interface SlotCandidate {
   questionId: string;
@@ -108,6 +109,7 @@ const INKUS_SLOTS: Record<Slot, SlotCandidate[]> = {
   autonomy: [{ questionId: "autonomy.control" }],
   competence: [{ questionId: "capacity.energy" }],
   relatedness: [{ questionId: "relatedness.support" }],
+  confirmation: [{ questionId: "summary.confirm" }],
 };
 
 export function normalizeLabel(label: string): string {
@@ -140,6 +142,10 @@ const LABEL_TAGS: Record<string, string[]> = {
   "propor um proximo passo": ["show_options"],
   "nao atuar": ["do_not_act"],
   "esta semana": ["this_week"],
+  "esta certo": ["confirmed"],
+  "esta certo em parte": ["partly"],
+  "precisa mudar": ["needs_change"],
+  "prefiro deixar em rascunho": ["keep_draft"],
 };
 
 /** Fallback when a label is not recognised: the meaning of each position in the first catalog. */

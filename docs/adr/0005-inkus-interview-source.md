@@ -34,7 +34,15 @@ The owner keeps the interview in Inkus, so questions can be edited without touch
   - A confirmation updates `epistemic_status`.
   - Retries are idempotent.
 - **Scores are compared, not applied.** Satisfaction and importance rows that differ from the life map are listed for the owner, and the life map changes only when the owner edits it.
-- **Nothing here grants anything.** No answer creates a grant, activates an agent or sends a message. Turning confirmed answers into a draft agent spec is the next step (see ROADMAP).
+- **From answers to a draft agent version.**
+  - `proposeFromInterview` turns an area's answers into a proposed update of that area's agent:
+    - the goal is the owner's own words;
+    - responsibilities come from the help they asked for, the barriers and the review cadence;
+    - capabilities are only *requested*, always within the boundaries.
+  - The Studio shows the proposal next to the owner's words. Nothing changes until the owner applies it.
+  - Applying updates the agent. For an agent linked to Inkus, it also writes a **draft** spec and records the agent on the answer rows it came from (`agent_id`).
+- **Every version Brad writes to Inkus is a draft.** This covers the interview, Studio edits, sync pushes and first exports. Activation is an explicit owner action: "Activate in Inkus" in Brad, or directly in Inkus. Hermes runs only active specs, so nothing Brad writes reaches Hermes without the owner.
+- **Nothing here grants anything.** No answer or proposal creates a grant, activates an agent or sends a message.
 
 ## Consequences
 

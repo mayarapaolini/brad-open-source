@@ -42,7 +42,8 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 | Agent lifecycle with enforced requirements | | Threat model and security review |
 | Time-boxed grants with revocation | | |
 | Adaptive discovery questions with "Another answer" everywhere, confirmable synthesis, per-answer Inkus consent (a second confirmation for sensitive areas) | | |
-| Interview from an editable Inkus catalog: branching rules, answers read from and written to Inkus, offline copy (tested with a synthetic Inkus) | Draft agent specs from confirmed interview answers | |
+| Interview from an editable Inkus catalog: branching rules, answers read from and written to Inkus, offline copy (tested with a synthetic Inkus) | | |
+| Interview answers → proposed agent update → draft version in Inkus; activation only by the owner | | |
 | Secretary: at most three focuses with evidence, confidence and trade-offs; one protected area; accept/adjust/snooze/decline; per-area silence; optional weekly check-in | | |
 | Personal / work contexts: a policy rule, owner bridges and a Secretary filter | | |
 | Summary to share, with sensitive areas left out unless consented for that summary | | |
@@ -59,9 +60,9 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 
 ## Optional adapters (not required)
 
-- **Inkus:** two-way sync of agent definitions. Edit an agent in Brad or in Inkus and the next sync reconciles it; deprecated Inkus versions are never loaded, same-domain agents are linked rather than duplicated, and new Inkus agents are only created on request. Grants, lifecycle state, people and history never leave Brad, and an Inkus edit can never grant a capability or activate an agent. Enable with `BRAD_ADAPTER_INKUS_ENABLED=true`, `BRAD_INKUS_MCP_URL` and `BRAD_INKUS_TOKEN`; try it offline with `BRAD_INKUS_FAKE=1`. See [ADR 0003](docs/adr/0003-inkus-editable-mirror.md). For the interview, also set `BRAD_INKUS_QUESTIONS_DB` and `BRAD_INKUS_ANSWERS_DB` to your Inkus database ids ([ADR 0005](docs/adr/0005-inkus-interview-source.md)).
+- **Inkus:** two-way sync of agent definitions. Edit an agent in Brad or in Inkus and the next sync reconciles it; Brad's changes arrive in Inkus as drafts that you activate; deprecated Inkus versions are never loaded, same-domain agents are linked rather than duplicated, and new Inkus agents are only created on request. Grants, lifecycle state, people and history never leave Brad, and an Inkus edit can never grant a capability or activate an agent. Enable with `BRAD_ADAPTER_INKUS_ENABLED=true`, `BRAD_INKUS_MCP_URL` and `BRAD_INKUS_TOKEN`; try it offline with `BRAD_INKUS_FAKE=1`. See [ADR 0003](docs/adr/0003-inkus-editable-mirror.md). For the interview, also set `BRAD_INKUS_QUESTIONS_DB` and `BRAD_INKUS_ANSWERS_DB` to your Inkus database ids ([ADR 0005](docs/adr/0005-inkus-interview-source.md)).
 - **Obsidian:** would import and export Markdown notes you pick. It never scans a whole vault.
-- **Hermes:** runs agents from their active Inkus spec, so it follows Brad's edits after each sync. Letting Hermes query Brad's policy engine directly is still open.
+- **Hermes:** runs agents from their active Inkus spec. Brad writes every change to Inkus as a draft, so Hermes follows it only after you activate it. Letting Hermes query Brad's policy engine directly is still open.
 
 The MVP runs without any of them. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 

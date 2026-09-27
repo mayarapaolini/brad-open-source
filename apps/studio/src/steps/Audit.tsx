@@ -61,6 +61,8 @@ export function Audit({
         return input.assumeState || input.assumeGrant ? `${text} ${t("audit.whatIf")}` : text;
       }
       case "lifecycle":
+        if (input.action === "interview")
+          return t("audit.interview", { agent: agentName(input.agentId), count: ((input.basis as string[]) ?? []).length });
         if (input.action === "edit") {
           return t("audit.edit", {
             agent: agentName(input.agentId),
@@ -104,6 +106,8 @@ export function Audit({
       }
       case "sync": {
         if (input.action === "export") return t("audit.inkusExport", { agent: agentName(input.agentId) });
+        if (input.action === "activate")
+          return t("audit.inkusActivate", { agent: agentName(input.agentId), version: Number(result.specVersion ?? 0) });
         if (input.source === "inkus-questions")
           return t("audit.inkusQuestions", { questions: Number(result.questions ?? 0), errors: Number(result.errors ?? 0) });
         if (input.source === "inkus-answers")

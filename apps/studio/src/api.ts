@@ -13,6 +13,7 @@ import type {
 } from "@brad/domain";
 import type { ActionRequest, PolicyDecision } from "@brad/policy-engine";
 import type { AnswerSyncReport, SyncReport } from "@brad/adapter-inkus";
+import type { InterviewProposal } from "@brad/agent-factory";
 import type { AgencyMetrics, FeedbackAction, FocusPlan, Load, ProposalFeedback, ShareSummary } from "@brad/secretary";
 import type { Answer, AnswerInput, CatalogError, DomainPath, Question, SynthesisItem, Verdict } from "@brad/discovery";
 import type { RankedItem, Suggestion, Tier } from "@brad/priority-engine";
@@ -88,6 +89,15 @@ export const api = {
     call<{ report: SyncReport; decisionId: number; agents: AgentDefinition[]; grants: ConsentGrant[] }>(
       "POST",
       "/api/adapters/inkus/sync",
+    ),
+  inkusActivate: (agentId: string) => call<{ agent: AgentDefinition }>("POST", "/api/adapters/inkus/activate", { agentId }),
+  interviewProposals: (lang: "en" | "pt") =>
+    call<{ proposals: InterviewProposal[] }>("GET", `/api/interview/proposals?lang=${lang}`),
+  applyInterview: (agentId: string, lang: "en" | "pt") =>
+    call<{ agent: AgentDefinition; grants: ConsentGrant[]; draft: unknown; linkedAnswers: number; inkusError: string | null }>(
+      "POST",
+      "/api/interview/apply",
+      { agentId, lang },
     ),
   inkusExport: (agentId: string) => call<{ agent: AgentDefinition }>("POST", "/api/adapters/inkus/export", { agentId }),
   discovery: () => call<DiscoveryState>("GET", "/api/discovery"),

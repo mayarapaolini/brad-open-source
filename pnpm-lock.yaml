@@ -71,6 +71,9 @@ importers:
       '@brad/adapter-inkus':
         specifier: workspace:*
         version: link:../../packages/adapter-inkus
+      '@brad/agent-factory':
+        specifier: workspace:*
+        version: link:../../packages/agent-factory
       '@brad/discovery':
         specifier: workspace:*
         version: link:../../packages/discovery
@@ -124,6 +127,9 @@ importers:
 
   packages/agent-factory:
     dependencies:
+      '@brad/discovery':
+        specifier: workspace:*
+        version: link:../discovery
       '@brad/domain':
         specifier: workspace:*
         version: link:../domain

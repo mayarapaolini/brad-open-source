@@ -299,10 +299,35 @@ try {
   await orchestrator.scrollIntoViewIfNeeded();
   await capture(page, 2600);
   await page.getByTestId("inkus-sync").click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="inkus-report"]')?.textContent?.includes("1 pushed"));
-  assert((await orchestrator.innerText()).includes("May act in: Work"), "an edit made in Brad is pushed to Inkus");
+  await page.waitForFunction(() => document.querySelector('[data-testid="inkus-report"]')?.textContent?.includes("1 sent as drafts"));
+  assert(
+    (await orchestrator.innerText()).includes("May act in: Work") && (await orchestrator.getByTestId("inkus-draft").count()) === 1,
+    "an edit made in Brad is written to Inkus as a draft, not activated",
+  );
+  await orchestrator.getByTestId("inkus-activate").click();
+  await orchestrator.getByTestId("inkus-draft").waitFor({ state: "detached" });
+  assert(true, "the owner activates the draft explicitly");
   await page.evaluate(() => window.scrollTo(0, 0));
   await capture(page, 2600);
+
+  // The interview answers propose an update for the family agent; applying it writes a draft to Inkus.
+  const familyCard = page.locator("article.card.agent").filter({ hasText: "Demo Family" });
+  const proposal = familyCard.getByTestId("interview-proposal");
+  await proposal.waitFor();
+  assert(
+    (await proposal.innerText()).includes("Dinner together on weekdays"),
+    "the interview proposes the owner's own words as the agent's goal",
+  );
+  await proposal.scrollIntoViewIfNeeded();
+  await capture(page, 2600);
+  await familyCard.getByTestId("interview-apply").click();
+  await familyCard.getByTestId("inkus-draft").waitFor();
+  assert(
+    (await familyCard.innerText()).includes("Goal: Dinner together on weekdays"),
+    "applying the proposal updates the agent and creates a draft in Inkus",
+  );
+  await familyCard.getByTestId("inkus-activate").click();
+  await familyCard.getByTestId("inkus-draft").waitFor({ state: "detached" });
 
   // Letting it act in family too mixes personal and work: denied until the owner allows a bridge.
   await orchestrator.getByTestId("edit-agent").click();

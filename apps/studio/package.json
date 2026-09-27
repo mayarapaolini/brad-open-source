@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@brad/adapter-inkus": "workspace:*",
+    "@brad/agent-factory": "workspace:*",
     "@brad/discovery": "workspace:*",
     "@brad/domain": "workspace:*",
     "@brad/policy-engine": "workspace:*",

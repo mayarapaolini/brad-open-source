@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ALLOWED_TRANSITIONS,
   CAPABILITIES,
@@ -17,6 +17,7 @@ import { useI18n } from "../i18n";
 import type { MessageKey } from "../i18n/en";
 import { agentLabel } from "../agentLabel";
 import type { SyncReport } from "@brad/adapter-inkus";
+import type { InterviewProposal } from "@brad/agent-factory";
 
 interface Props {
   agents: AgentDefinition[];
@@ -215,6 +216,7 @@ function InkusPanel({ onSynced, onStatus }: { onSynced: () => Promise<void>; onS
             retired: report.retired.length,
             pushed: report.pushed.length,
           })}
+          {report.activated.length > 0 && ` · ${t("inkus.activated", { count: report.activated.length })}`}
           {report.overwritten.length > 0 && ` · ${t("inkus.overwritten", { count: report.overwritten.length })}`}
           {report.errors.length > 0 && ` · ${t("inkus.errors", { count: report.errors.length })}`}
           {lastAt && <span className="muted"> · {new Date(lastAt).toLocaleString()}</span>}
@@ -225,8 +227,52 @@ function InkusPanel({ onSynced, onStatus }: { onSynced: () => Promise<void>; onS
   );
 }
 
-export function Agents({ agents, grants, forbidden, lifeMap, onLifeMapChanged, onGenerate, onChanged, onNext }: Props) {
+/** What the interview suggests for this agent, next to the owner's own words. Applying is explicit. */
+function InterviewProposalPanel({ proposal, linked, onApply }: { proposal: InterviewProposal; linked: boolean; onApply: () => void }) {
   const { t } = useI18n();
+  const { current, proposed } = proposal;
+  return (
+    <div className="interview-proposal" data-testid="interview-proposal">
+      <p className="small">
+        <strong>{t("interview.title")}</strong> {proposal.confirmed ? t("interview.confirmed") : t("interview.notConfirmed")}
+      </p>
+      <p className="small muted">{t("interview.ownerWords", { words: proposal.ownerWords.map((w) => `“${w}”`).join(", ") })}</p>
+      {proposed.goal !== current.goal && (
+        <p className="small">
+          {t("agents.goal")}: <del className="muted">{current.goal || "—"}</del> → <strong>{proposed.goal}</strong>
+        </p>
+      )}
+      {JSON.stringify(proposed.responsibilities) !== JSON.stringify(current.responsibilities) && (
+        <ul className="small responsibilities">
+          {proposed.responsibilities.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      )}
+      {proposed.requestedCapabilities.some((c) => !current.requestedCapabilities.includes(c)) && (
+        <p className="small">
+          {t("interview.requests", {
+            capabilities: proposed.requestedCapabilities
+              .filter((c) => !current.requestedCapabilities.includes(c))
+              .map((c) => t(`capability.${c}`))
+              .join(", "),
+          })}
+        </p>
+      )}
+      {proposal.warnings.map((w) => (
+        <p key={w} className="warn small">
+          {t(`interview.warning.${w}`)}
+        </p>
+      ))}
+      <button className="small-btn primary" onClick={onApply} data-testid="interview-apply">
+        {linked ? t("interview.applyDraft") : t("interview.apply")}
+      </button>
+    </div>
+  );
+}
+
+export function Agents({ agents, grants, forbidden, lifeMap, onLifeMapChanged, onGenerate, onChanged, onNext }: Props) {
+  const { t, lang } = useI18n();
   const [editing, setEditing] = useState<string | null>(null);
   const [inkusEnabled, setInkusEnabled] = useState(false);
 
@@ -240,6 +286,39 @@ export function Agents({ agents, grants, forbidden, lifeMap, onLifeMapChanged, o
     }
   };
   const [notices, setNotices] = useState<Record<string, string>>({});
+  const [proposals, setProposals] = useState<Record<string, InterviewProposal>>({});
+  const loadProposals = useCallback(
+    () =>
+      api
+        .interviewProposals(lang)
+        .then((r) => setProposals(Object.fromEntries(r.proposals.map((p) => [p.agentId, p]))))
+        .catch(() => setProposals({})),
+    [lang],
+  );
+  useEffect(() => {
+    void loadProposals();
+  }, [loadProposals, agents]);
+
+  // Confirming a proposal updates the agent locally and, when it is linked, writes a draft to Inkus.
+  const applyProposal = async (agent: AgentDefinition) => {
+    try {
+      const res = await api.applyInterview(agent.id, lang);
+      note(agent.id, res.inkusError ? t("agents.draftFailed") : "");
+      await onChanged();
+    } catch (e) {
+      note(agent.id, errorText(e));
+    }
+  };
+  // Activation is always the owner's explicit action (ADR 0005).
+  const activate = async (agent: AgentDefinition) => {
+    try {
+      await api.inkusActivate(agent.id);
+      note(agent.id, "");
+      await onChanged();
+    } catch (e) {
+      note(agent.id, e instanceof ApiError ? t(`inkusError.${e.message}` as MessageKey) : String(e));
+    }
+  };
 
   // Personal and work stay apart unless the owner lets this agent cross (saved in the life map).
   const setBridge = async (agentId: string, allowed: boolean) => {
@@ -330,8 +409,14 @@ export function Agents({ agents, grants, forbidden, lifeMap, onLifeMapChanged, o
                   {a.origin === "inkus" && <span className="badge origin-inkus">Inkus</span>}
                   {a.inkus && a.origin !== "inkus" && <span className="badge origin-synced">{t("agents.inInkus")}</span>}
                   {a.domain ? t(`domain.${a.domain}`) : t("agents.crossCutting")} · {t(`reason.${a.reason}`)}
-                  {a.inkus && (a.revision ?? 0) > a.inkus.syncedRevision && (
+                  {a.inkus && (a.revision ?? 0) > Math.max(a.inkus.syncedRevision, a.inkus.draft?.revision ?? -1) && (
                     <span className="badge unsynced"> {t("agents.unsynced")}</span>
+                  )}
+                  {a.inkus?.draft && (
+                    <span className="badge draft-inkus" data-testid="inkus-draft">
+                      {" "}
+                      {t("agents.inkusDraft", { version: a.inkus.draft.specVersion })}
+                    </span>
                   )}
                 </p>
                 {!a.domain && (
@@ -353,9 +438,20 @@ export function Agents({ agents, grants, forbidden, lifeMap, onLifeMapChanged, o
                     {t("agents.bridge")}
                   </label>
                 )}
+                {a.inkus?.draft && inkusEnabled && (
+                  <p className="small">
+                    {t("agents.draftExplain")}{" "}
+                    <button className="small-btn primary" onClick={() => void activate(a)} data-testid="inkus-activate">
+                      {t("agents.activateInInkus")}
+                    </button>
+                  </p>
+                )}
                 <p>
                   <strong>{t("agents.goal")}:</strong> {a.goal || <em className="muted">{t("agents.noGoal")}</em>}
                 </p>
+                {proposals[a.id] && a.state !== "archived" && (
+                  <InterviewProposalPanel proposal={proposals[a.id]!} linked={Boolean(a.inkus && inkusEnabled)} onApply={() => void applyProposal(a)} />
+                )}
                 {(a.responsibilities ?? []).length > 0 && (
                   <ul className="responsibilities small">
                     {(a.responsibilities ?? []).map((r) => (

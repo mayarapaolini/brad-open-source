@@ -1,4 +1,4 @@
-import type { AgentDefinition, Capability, ConsentGrant } from "@brad/domain";
+import type { AgentDefinition, Capability, ConsentGrant, InkusLink } from "@brad/domain";
 import { agentFromInkus, applyInkusSpec, domainFromSpec, inkusAgentId, specFromAgent, type ContentField } from "./mapping";
 import type { InkusClient } from "./types";
 
@@ -11,7 +11,10 @@ export interface SyncReport {
   retired: string[];
   /** Local edits replaced by a newer Inkus version (Inkus wins, by owner decision). */
   overwritten: { agentId: string; fields: ContentField[] }[];
+  /** Local edits written to Inkus as new draft versions (not active until the owner activates them). */
   pushed: string[];
+  /** Brad drafts the owner activated in Inkus since the last sync. */
+  activated: string[];
   errors: { agentId: string | null; message: string }[];
 }
 
@@ -39,8 +42,9 @@ function message(error: unknown): string {
 /**
  * Two-way sync. Pull first: a newer active or draft Inkus spec replaces the local content (state
  * and grants stay local); deprecated-only agents are retired; a Brad agent of the same domain is
- * linked instead of duplicated. Then push: local edits to linked agents become new, activated
- * spec versions. New Inkus agents are only created by `exportAgentToInkus`.
+ * linked instead of duplicated. Then push: local edits to linked agents become new **draft**
+ * versions; Brad never activates them (ADR 0005). New Inkus agents are only created by
+ * `exportAgentToInkus`.
  */
 export async function syncWithInkus(input: SyncInput): Promise<SyncResult> {
   const { client, now, forbidden } = input;
@@ -51,6 +55,7 @@ export async function syncWithInkus(input: SyncInput): Promise<SyncResult> {
     retired: [],
     overwritten: [],
     pushed: [],
+    activated: [],
     errors: [],
   };
   const agents = new Map(input.agents.map((a) => [a.id, a]));
@@ -102,6 +107,15 @@ export async function syncWithInkus(input: SyncInput): Promise<SyncResult> {
         report.imported.push(agent.id);
         continue;
       }
+      const draft = local.inkus?.draft;
+      if (draft && spec.id === draft.specId) {
+        // Brad's own draft. If the owner activated it in Inkus, it is now the synced version.
+        if (spec.status === "active") {
+          agents.set(local.id, { ...local, inkus: settleDraft(local.inkus!, now) });
+          report.activated.push(local.id);
+        }
+        continue;
+      }
       if (local.inkus?.specId === spec.id) continue;
       const dirty = (local.revision ?? 0) > (local.inkus?.syncedRevision ?? 0);
       const { agent, changed } = applyInkusSpec(local, actor, spec, now, forbidden);
@@ -124,8 +138,9 @@ export async function syncWithInkus(input: SyncInput): Promise<SyncResult> {
     if (!link || agent.state === "archived") continue;
     const revision = agent.revision ?? 0;
     if (revision <= link.syncedRevision) continue;
+    if (link.draft && link.draft.revision >= revision) continue; // already drafted
     try {
-      agents.set(agent.id, await pushVersion(client, agent, input.displayName(agent), link.actorId, now));
+      agents.set(agent.id, await pushDraft(client, agent, input.displayName(agent), link.actorId, now));
       report.pushed.push(agent.id);
     } catch (error) {
       report.errors.push({ agentId: agent.id, message: message(error) });
@@ -135,7 +150,15 @@ export async function syncWithInkus(input: SyncInput): Promise<SyncResult> {
   return { agents: [...agents.values()], revokeGrantIds, report };
 }
 
-async function pushVersion(
+/** The link once its draft is the active version. */
+function settleDraft(link: InkusLink, now: string): InkusLink {
+  const { draft, ...rest } = link;
+  if (!draft) return link;
+  return { ...rest, specId: draft.specId, specVersion: draft.specVersion, syncedRevision: draft.revision, syncedAt: now };
+}
+
+/** Writes the agent's current content as a new draft version. The active version is untouched. */
+export async function pushDraft(
   client: InkusClient,
   agent: AgentDefinition,
   name: string,
@@ -144,22 +167,28 @@ async function pushVersion(
 ): Promise<AgentDefinition> {
   const fields = specFromAgent(agent, name);
   const spec = await client.createSpec(actorId, fields);
-  await client.activateSpec(spec.id);
-  return {
-    ...agent,
-    inkus: {
-      actorId,
-      specId: spec.id,
-      specVersion: spec.version,
-      syncedAt: now,
-      syncedRevision: agent.revision ?? 0,
-      passthrough: { ...(agent.inkus?.passthrough ?? {}), capabilities: fields.capabilities, scope: fields.scope },
-    },
-  };
+  const draft = { specId: spec.id, specVersion: spec.version, revision: agent.revision ?? 0, createdAt: now };
+  const passthrough = { ...(agent.inkus?.passthrough ?? {}), capabilities: fields.capabilities, scope: fields.scope };
+  // A brand-new actor has no active version yet: its first draft is also what Brad reads back.
+  const link: InkusLink = agent.inkus
+    ? { ...agent.inkus, passthrough, draft }
+    : { actorId, specId: spec.id, specVersion: spec.version, syncedAt: now, syncedRevision: draft.revision, passthrough, draft };
+  return { ...agent, inkus: link };
 }
 
 /**
- * Creates an Inkus actor for a Brad agent that has none, with an active first version.
+ * Activates the draft Brad wrote, on an explicit owner action. Inkus deprecates the previous
+ * active version; Hermes starts using the new one.
+ */
+export async function activateDraft(client: InkusClient, agent: AgentDefinition, now: string): Promise<AgentDefinition> {
+  const draft = agent.inkus?.draft;
+  if (!agent.inkus || !draft) throw new Error("agent has no draft in Inkus");
+  await client.activateSpec(draft.specId);
+  return { ...agent, inkus: settleDraft(agent.inkus, now) };
+}
+
+/**
+ * Creates an Inkus actor for a Brad agent that has none, with a first **draft** version.
  * Only called on an explicit owner action, never during a sync.
  */
 export async function exportAgentToInkus(
@@ -170,5 +199,5 @@ export async function exportAgentToInkus(
 ): Promise<AgentDefinition> {
   if (agent.inkus) throw new Error("agent is already linked to Inkus");
   const actor = await client.createActor({ name, description: agent.goal || name });
-  return pushVersion(client, agent, name, actor.id, now);
+  return pushDraft(client, agent, name, actor.id, now);
 }
