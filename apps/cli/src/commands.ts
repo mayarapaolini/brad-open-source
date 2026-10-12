@@ -20,7 +20,7 @@ export const EXIT = { ok: 0, problem: 1, confirm: 2 } as const;
 
 const HELP = `Brad CLI: operate the local store without the Studio.
 
-Usage: pnpm brad <command> [options]
+Usage: pnpm run brad <command> [options]
 
   validate <file>                 Check an export or a bare life map. Exit 1 on any problem.
   export [--out <file>]           Write your life map, agents and grants as JSON.
@@ -237,7 +237,10 @@ async function inkusCheck(io: Io): Promise<number> {
     }
     return problems > 0 ? EXIT.problem : EXIT.ok;
   } catch (error) {
-    io.err(`inkus check: ${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error ? error.message : String(error);
+    io.err(`inkus check: ${message}`);
+    if (/-32001|\b401\b|unauthori[sz]ed|token/i.test(message))
+      io.err("  Inkus did not accept BRAD_INKUS_TOKEN. Create a new API token in Inkus, set it again in this terminal and re-run. Nothing was read or written.");
     return EXIT.problem;
   } finally {
     await client?.close?.();
@@ -257,7 +260,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
       return doctor(argv, io);
     case "inkus":
       if (sub === "check") return inkusCheck(io);
-      io.err("Usage: pnpm brad inkus check");
+      io.err("Usage: pnpm run brad inkus check");
       return EXIT.problem;
     case undefined:
     case "help":

@@ -7,4 +7,5 @@ const code = await run(process.argv.slice(2), {
   // `pnpm brad` runs from apps/cli; INIT_CWD is where the owner typed the command.
   cwd: process.env.INIT_CWD ?? process.cwd(),
 });
-process.exit(code);
+// Let pending handles close on their own; process.exit() can abort them mid-close on Windows.
+process.exitCode = code;

@@ -28,12 +28,22 @@ export BRAD_INKUS_QUESTIONS_DB=<question database id>
 export BRAD_INKUS_ANSWERS_DB=<answers database id>
 ```
 
+On Windows (PowerShell), set them like this. They last only for that window:
+
+```powershell
+$env:BRAD_ADAPTER_INKUS_ENABLED = "true"
+$env:BRAD_INKUS_MCP_URL = "https://<your-inkus>/mcp"
+$env:BRAD_INKUS_TOKEN = "<token>"
+$env:BRAD_INKUS_QUESTIONS_DB = "<question database id>"
+$env:BRAD_INKUS_ANSWERS_DB = "<answers database id>"
+```
+
 Then go step by step. Each step only goes as far as it says.
 
-1. `pnpm -s brad inkus check` is **read-only**. It shows the agent count, whether each agent has an active version, and the question catalog with any problems. It also counts the answers and flags any that point to questions missing from the catalog.
+1. `pnpm run brad inkus check` is **read-only**. It shows the agent count, whether each agent has an active version, and the question catalog with any problems. It also counts the answers and flags any that point to questions missing from the catalog.
 2. `pnpm dev`, then **Discovery → Reload questions from Inkus** reads the catalog and keeps a local copy. Switch to **Questions from Inkus**.
 3. **Sync answers with Inkus** brings in your stored answers and lists any score that differs from the life map (nothing is applied). Answers you give from then on are written as new rows.
 4. **Agents → Sync with Inkus** links or imports your agents. Brad's edits arrive in Inkus as **drafts**.
 5. On one agent card, **Apply and create a draft in Inkus** from the interview proposal. Check the draft in Inkus, then activate it in Inkus or with **Activate in Inkus**.
 
-If something fails, the Studio and the audit history say which step and why. The local data stays as it was.
+If something fails, the Studio and the audit history say which step and why. The local data stays as it was. "Token de API inválido ou revogado" means Inkus rejected `BRAD_INKUS_TOKEN`: create a new API token in Inkus and set it again.

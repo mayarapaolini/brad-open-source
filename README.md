@@ -8,7 +8,7 @@
 
 ## Run it
 
-Requires Node.js ≥ 22.13 and pnpm (`corepack enable`).
+Requires Node.js ≥ 22.13 and pnpm (`corepack enable`, or `npm install -g pnpm`, which also works on Windows).
 
 ```bash
 git clone https://github.com/mayarapaolini/brad-open-source.git && cd brad-open-source
@@ -36,12 +36,12 @@ Open <http://127.0.0.1:5173> and click **Load demo profile**. Everything runs on
 Operate the local store without the Studio. Paths are relative to where you run the command.
 
 ```bash
-pnpm -s brad validate export.json              # an export or a bare life map; exit 1 on problems
-pnpm -s brad export --out export.json          # your life map, agents and grants (keep it private)
-pnpm -s brad import export.json                # preview only: nothing changes (exit 2)
-pnpm -s brad import export.json --yes          # apply; active agents arrive paused, undo in Audit
-pnpm -s brad doctor                            # where the data is and what it holds, counts only
-pnpm -s brad inkus check                       # read-only check of your Inkus setup
+pnpm run brad validate export.json             # an export or a bare life map; exit 1 on problems
+pnpm run brad export --out export.json         # your life map, agents and grants (keep it private)
+pnpm run brad import export.json               # preview only: nothing changes (exit 2)
+pnpm run brad import export.json --yes         # apply; active agents arrive paused, undo in Audit
+pnpm run brad doctor                           # where the data is and what it holds, counts only
+pnpm run brad inkus check                      # read-only check of your Inkus setup
 ```
 
 ## Works today · in development · planned
