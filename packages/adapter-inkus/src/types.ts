@@ -33,6 +33,30 @@ export interface InkusDatabaseRecord {
   updated_at?: string;
 }
 
+/** Shape of a row Inkus' `agent_learnings` table (PR #130) exposes over MCP. */
+export interface InkusLearningEvent {
+  id: string;
+  kind: "correction" | "preference" | "decision";
+  content: string;
+  evidence: string;
+  context?: string | null;
+  domain?: string | null;
+  created_at: string;
+}
+
+export interface InkusRecordLearningInput {
+  kind: "correction" | "preference" | "decision";
+  content: string;
+  evidence: string;
+  context?: string | null;
+  domain?: string | null;
+}
+
+export interface InkusRecallLearningsQuery {
+  domain?: string | null;
+  limit?: number;
+}
+
 /** The operations Brad needs from Inkus. The MCP client and the test fake both implement it. */
 export interface InkusClient {
   listActors(): Promise<InkusActor[]>;
@@ -46,4 +70,15 @@ export interface InkusClient {
   /** The idempotency key makes a retried push create the row once. */
   createRecord(databaseId: string, fields: Record<string, unknown>, idempotencyKey?: string): Promise<InkusDatabaseRecord>;
   updateRecord(recordId: string, fields: Record<string, unknown>): Promise<void>;
+  /**
+   * Binds the current token to `actorId` in Inkus. `recordLearning`/`recallLearnings` require
+   * this to have been called at least once for the token the client connects with — Inkus
+   * always records/recalls learnings for the actor the token is bound to, never one named in
+   * the call's own arguments (see ADR-0006). A one-time setup step, not part of every sync.
+   */
+  setMyActor(actorId: string): Promise<void>;
+  /** Records a learning event for the actor the token is bound to (see `setMyActor`). */
+  recordLearning(input: InkusRecordLearningInput): Promise<{ learningId: string; duplicate: boolean }>;
+  /** Recalls active learning events for the actor the token is bound to, most recent first. */
+  recallLearnings(query: InkusRecallLearningsQuery): Promise<InkusLearningEvent[]>;
 }

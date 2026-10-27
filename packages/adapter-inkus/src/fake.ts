@@ -1,5 +1,18 @@
 import { demoInkusCatalogRecords } from "@brad/discovery";
-import type { InkusActor, InkusClient, InkusDatabaseRecord, InkusSpec, InkusSpecFields } from "./types";
+import type {
+  InkusActor,
+  InkusClient,
+  InkusDatabaseRecord,
+  InkusLearningEvent,
+  InkusRecallLearningsQuery,
+  InkusRecordLearningInput,
+  InkusSpec,
+  InkusSpecFields,
+} from "./types";
+
+function normalizeLearningContent(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 /** Database ids of the synthetic workspace (the real ones come from the environment). */
 export const DEMO_QUESTIONS_DB = "demo-questions-db";
@@ -10,6 +23,9 @@ export class FakeInkus implements InkusClient {
   actors: InkusActor[] = [];
   specs: InkusSpec[] = [];
   databases: Record<string, InkusDatabaseRecord[]> = {};
+  learnings: (InkusLearningEvent & { actorId: string; status: "active" })[] = [];
+  /** Mirrors the token→actor binding `set_my_actor` persists in Inkus (per `InkusClient.setMyActor`). */
+  private boundActorId: string | null = null;
   private idempotency = new Map<string, InkusDatabaseRecord>();
   private seq = 0;
 
@@ -74,6 +90,47 @@ export class FakeInkus implements InkusClient {
     if (!row) throw new Error(`unknown record ${recordId}`);
     row.fields = { ...row.fields, ...structuredClone(fields) };
     row.updated_at = new Date().toISOString();
+  }
+
+  async setMyActor(actorId: string): Promise<void> {
+    if (!this.actors.some((a) => a.id === actorId)) throw new Error(`unknown actor ${actorId}`);
+    this.boundActorId = actorId;
+  }
+
+  async recordLearning(input: InkusRecordLearningInput): Promise<{ learningId: string; duplicate: boolean }> {
+    if (!this.boundActorId) throw new Error("Chame set_my_actor antes de registrar um aprendizado.");
+    if (!input.content.trim()) throw new Error("content é obrigatório.");
+    if (!input.evidence.trim()) throw new Error("evidence é obrigatório.");
+    const normalized = normalizeLearningContent(input.content);
+    const duplicate = this.learnings.find(
+      (l) => l.actorId === this.boundActorId && l.kind === input.kind && l.status === "active" && normalizeLearningContent(l.content) === normalized,
+    );
+    if (duplicate) return { learningId: duplicate.id, duplicate: true };
+    const row: InkusLearningEvent & { actorId: string; status: "active" } = {
+      id: this.id("learning"),
+      actorId: this.boundActorId,
+      kind: input.kind,
+      content: input.content,
+      evidence: input.evidence,
+      context: input.context ?? null,
+      domain: input.domain ?? null,
+      created_at: new Date().toISOString(),
+      status: "active",
+    };
+    this.learnings.push(row);
+    return { learningId: row.id, duplicate: false };
+  }
+
+  async recallLearnings(query: InkusRecallLearningsQuery): Promise<InkusLearningEvent[]> {
+    if (!this.boundActorId) throw new Error("Chame set_my_actor antes de recuperar aprendizados.");
+    const limit = Math.min(20, Math.max(1, query.limit ?? 20));
+    const rows = this.learnings
+      .filter((l) => l.actorId === this.boundActorId && l.status === "active" && (!query.domain || l.domain === query.domain))
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+      .slice(0, limit);
+    return structuredClone(
+      rows.map((row) => ({ id: row.id, kind: row.kind, content: row.content, evidence: row.evidence, context: row.context, domain: row.domain, created_at: row.created_at })),
+    );
   }
 
   /** Test helper: retire every version of an actor, as a migration in Inkus would. */

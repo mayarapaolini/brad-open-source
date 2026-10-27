@@ -1,6 +1,15 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { InkusActor, InkusClient, InkusDatabaseRecord, InkusSpec, InkusSpecFields } from "./types";
+import type {
+  InkusActor,
+  InkusClient,
+  InkusDatabaseRecord,
+  InkusLearningEvent,
+  InkusRecallLearningsQuery,
+  InkusRecordLearningInput,
+  InkusSpec,
+  InkusSpecFields,
+} from "./types";
 
 export interface McpInkusOptions {
   url: string;
@@ -75,6 +84,17 @@ export async function connectInkus(options: McpInkusOptions): Promise<InkusClien
       }),
     updateRecord: async (recordId, fields) => {
       await call("update_database_record", { record_id: recordId, fields });
+    },
+    setMyActor: async (actorId) => {
+      await call("set_my_actor", { actor_id: actorId });
+    },
+    recordLearning: async (input: InkusRecordLearningInput) => {
+      const result = await call<{ learning_id: string; duplicate: boolean }>("record_learning", { ...input });
+      return { learningId: result.learning_id, duplicate: result.duplicate };
+    },
+    recallLearnings: async (query: InkusRecallLearningsQuery) => {
+      const result = await call<{ learnings: InkusLearningEvent[] } | null>("recall_learnings", { ...query });
+      return result?.learnings ?? [];
     },
     close: () => client.close(),
   };
