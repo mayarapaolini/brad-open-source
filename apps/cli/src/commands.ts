@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadCatalogRecords, type InkusClient } from "@brad/adapter-inkus";
+import { createInkusMemoryProvider, loadCatalogRecords, type InkusClient } from "@brad/adapter-inkus";
 import { dataDirFrom, dbPath, inkusFrom } from "@brad/api/config";
 import { TransferError, exportData, importData, previewImport } from "@brad/api/snapshot";
 import { Store } from "@brad/api/store";
 import { parseInkusCatalog } from "@brad/discovery";
-import { AGENT_STATES, isGrantValid, validateExport, validateLifeMap } from "@brad/domain";
+import { AGENT_STATES, isGrantValid, syntheticRegressionVerifier, validateExport, validateLifeMap } from "@brad/domain";
 
 export interface Io {
   out: (line: string) => void;
@@ -30,6 +30,12 @@ Usage: pnpm run brad <command> [options]
   doctor                          Where the data is and what it holds (counts only, no content).
   inkus check                     Read-only check of the Inkus connection: agents, question
                                   catalog, answers. Writes nothing.
+  learning demo                   Continuous Learning Engine, Phase 1 pilot: records a synthetic
+                                  correction, recalls it in a new session, applies it to an
+                                  equivalent task and verifies the result objectively (pass/fail/
+                                  indeterminate). Only runs against the synthetic Inkus workspace
+                                  (BRAD_INKUS_FAKE=1); never writes real data. Stores the
+                                  verification outcome as a local decision record.
   help                            This text.
 
 Options:
@@ -247,6 +253,74 @@ async function inkusCheck(io: Io): Promise<number> {
   }
 }
 
+/**
+ * Phase 1 pilot for the Continuous Learning Engine (PRD "Brad Continuous Learning & Verified
+ * Agent Execution v0.2"): record a correction with evidence, recall it in a fresh session,
+ * apply it to an equivalent synthetic task, and verify the outcome objectively. Deliberately
+ * restricted to the synthetic Inkus workspace (BRAD_INKUS_FAKE=1) — a real pilot against a live
+ * workspace is a separately-approved step, not something this demo does on its own (see
+ * ADR-0006). Writes one local decision record with the verification result; writes nothing to
+ * Inkus beyond the one synthetic learning event.
+ */
+async function learningDemo(io: Io): Promise<number> {
+  const warnings: string[] = [];
+  const inkus = inkusFrom(io.env, (m) => warnings.push(m));
+  if (!inkus) {
+    io.err(warnings[0] ?? "Inkus adapter is disabled: set BRAD_ADAPTER_INKUS_ENABLED=true and BRAD_INKUS_FAKE=1.");
+    return EXIT.problem;
+  }
+  if (!inkus.fake) {
+    io.err("learning demo only runs against the synthetic Inkus workspace: set BRAD_INKUS_FAKE=1. A real pilot is a separate, explicitly-approved step.");
+    return EXIT.problem;
+  }
+
+  let client: (InkusClient & { close?: () => Promise<void> }) | undefined;
+  const { store } = openStore([], io);
+  try {
+    client = await inkus.open();
+    const actors = await client.listActors();
+    const pilot = actors.find((a) => a.name === "Brad Learning Pilot") ?? (await client.createActor({ name: "Brad Learning Pilot", description: "Synthetic actor for the Phase 1 continuous-learning demo" }));
+    await client.setMyActor(pilot.id);
+    const provider = createInkusMemoryProvider(client, pilot.id);
+
+    const { event, duplicate } = await provider.record({
+      actorId: pilot.id,
+      kind: "correction",
+      content: "Always greet the user by name",
+      evidence: "Synthetic fixture: user said 'You forgot my name again.'",
+    });
+    io.out(`Recorded learning ${event.id}${duplicate ? " (already existed, not duplicated)" : ""}.`);
+
+    // A new session: close this connection and open a fresh one, with no reference kept to
+    // anything the write above returned — only the actor id, exactly what a reconnecting
+    // MCP client has.
+    await client.close?.();
+    client = await inkus.open();
+    await client.setMyActor(pilot.id);
+    const reconnected = createInkusMemoryProvider(client, pilot.id);
+
+    const draftGreeting = async (useMemory: boolean) => {
+      const learnings = useMemory ? await reconnected.recall({ actorId: pilot.id }) : [];
+      const applies = learnings.some((l) => l.content.includes("greet the user by name"));
+      return applies ? "Hello, Mayara!" : "Hello!";
+    };
+
+    const result = await syntheticRegressionVerifier.verify(
+      { id: "learning-demo-greeting", before: () => draftGreeting(false), after: () => draftGreeting(true), isCorrect: (after) => typeof after === "string" && after.includes("Mayara") },
+      { agentVersion: "cli-learning-demo-1", runId: `run-${Date.now()}` },
+    );
+
+    io.out(`Verification: ${result.status}`);
+    io.out(`Evidence: ${result.evidence}`);
+    const decision = store.addDecision("correction", { learningId: event.id, actorId: pilot.id }, result);
+    io.out(`Stored as local decision record #${decision.id} (pnpm run brad doctor shows the total count).`);
+    return result.status === "pass" ? EXIT.ok : EXIT.problem;
+  } finally {
+    await client?.close?.();
+    store.close();
+  }
+}
+
 export async function run(argv: string[], io: Io): Promise<number> {
   const [command, sub] = positional(argv);
   switch (command) {
@@ -261,6 +335,10 @@ export async function run(argv: string[], io: Io): Promise<number> {
     case "inkus":
       if (sub === "check") return inkusCheck(io);
       io.err("Usage: pnpm run brad inkus check");
+      return EXIT.problem;
+    case "learning":
+      if (sub === "demo") return learningDemo(io);
+      io.err("Usage: pnpm run brad learning demo");
       return EXIT.problem;
     case undefined:
     case "help":
