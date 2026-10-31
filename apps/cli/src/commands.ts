@@ -5,7 +5,8 @@ import { dataDirFrom, dbPath, inkusFrom } from "@brad/api/config";
 import { TransferError, exportData, importData, previewImport } from "@brad/api/snapshot";
 import { Store } from "@brad/api/store";
 import { parseInkusCatalog } from "@brad/discovery";
-import { AGENT_STATES, isGrantValid, syntheticRegressionVerifier, validateExport, validateLifeMap } from "@brad/domain";
+import { AGENT_STATES, isGrantValid, syntheticRegressionVerifier, validateExport, validateLifeMap, type LearningEvent, type LifeDomainId } from "@brad/domain";
+import { FixedApprovalBroker, ScriptedModel, runTurn, type ToolExecutor } from "@brad/harness";
 
 export interface Io {
   out: (line: string) => void;
@@ -36,6 +37,11 @@ Usage: pnpm run brad <command> [options]
                                   indeterminate). Only runs against the synthetic Inkus workspace
                                   (BRAD_INKUS_FAKE=1); never writes real data. Stores the
                                   verification outcome as a local decision record.
+  run <agentId> "<goal>" [--domain <domain>]
+                                  Agent-execution harness pilot: runs a scripted model against
+                                  the real policy engine and one real local tool (life-map note
+                                  lookup). No real LLM is called. Stores the run as a decision
+                                  record. --domain is required for a cross-cutting agent.
   help                            This text.
 
 Options:
@@ -50,7 +56,7 @@ function positional(args: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i]!.startsWith("--")) {
-      if (["--out", "--time-zone", "--data-dir"].includes(args[i]!)) i++;
+      if (["--out", "--time-zone", "--data-dir", "--domain"].includes(args[i]!)) i++;
       continue;
     }
     out.push(args[i]!);
@@ -321,6 +327,97 @@ async function learningDemo(io: Io): Promise<number> {
   }
 }
 
+/** Reads the one real local capability the Phase 1 harness demo wires up: the life map's own
+ *  per-domain note (goal/satisfaction/importance) — local, safe, no external system touched. */
+function lifeMapNotesTool(store: Store): ToolExecutor {
+  return {
+    capability: "read_notes",
+    async execute(call) {
+      const domain = String(call.input.domain ?? "");
+      const assessment = store.getLifeMap()?.assessments.find((a) => a.domain === domain);
+      if (!assessment) return { id: call.id, ok: false, output: `no note for domain ${domain}` };
+      return { id: call.id, ok: true, output: `goal: ${assessment.goal} (satisfaction ${assessment.satisfaction}/10, importance ${assessment.importance}/10)` };
+    },
+  };
+}
+
+/**
+ * Phase 1 agent-execution harness pilot (ADR-0007): runs the real `runTurn` loop — context
+ * assembly (recalled learnings, when an Inkus connection is wired up for this agent), a
+ * deterministic `ScriptedModel` (no real LLM is called anywhere in this repo), `policy-engine`
+ * as the one real enforcement gate for every proposed tool call, and one real local tool
+ * (reading the agent's own life-map note). Stores the whole run as one local decision record.
+ */
+async function runCommand(argv: string[], io: Io): Promise<number> {
+  const [, agentId, goal] = positional(argv);
+  if (!agentId || !goal) {
+    io.err('Usage: pnpm run brad run <agentId> "<goal>" [--domain <domain>]');
+    return EXIT.problem;
+  }
+  const { store } = openStore(argv, io);
+  try {
+    const agent = store.getAgents().find((a) => a.id === agentId);
+    if (!agent) {
+      io.err(`run: unknown agent ${agentId} (see "pnpm run brad doctor" or the Studio's Agents step)`);
+      return EXIT.problem;
+    }
+    const lifeMap = store.getLifeMap();
+    if (!lifeMap) {
+      io.err("run: no life map yet — boundaries are required to evaluate policy. Run the diagnostic or load the demo profile first.");
+      return EXIT.problem;
+    }
+    const domain = (option(argv, "--domain") ?? agent.domain) as LifeDomainId | null;
+    if (!domain) {
+      io.err("run: this is a cross-cutting agent (no domain) — pass --domain <domain> to say which domain this run acts in.");
+      return EXIT.problem;
+    }
+
+    let learnings: LearningEvent[] = [];
+    const warnings: string[] = [];
+    const inkus = inkusFrom(io.env, (m) => warnings.push(m));
+    if (inkus && agent.inkus?.actorId) {
+      const client = await inkus.open();
+      try {
+        await client.setMyActor(agent.inkus.actorId);
+        learnings = await createInkusMemoryProvider(client, agent.inkus.actorId).recall({ actorId: agent.inkus.actorId, domain });
+        io.out(`Recalled ${learnings.length} learning(s) for this agent before starting.`);
+      } finally {
+        await client.close?.();
+      }
+    } else {
+      io.out("No Inkus connection for this agent — running with no recalled learnings.");
+    }
+
+    const model = new ScriptedModel([
+      { text: null, toolCalls: [{ id: "call-1", capability: "read_notes", input: { domain } }] },
+      { text: `Looked up the note for ${domain} before answering "${goal}".`, toolCalls: [] },
+    ]);
+
+    const result = await runTurn({
+      agent,
+      goal,
+      domain,
+      model,
+      tools: [lifeMapNotesTool(store)],
+      approvals: new FixedApprovalBroker("unavailable"),
+      policy: { agents: store.getAgents(), grants: store.getGrants(), boundaries: lifeMap.boundaries },
+      learnings,
+    });
+
+    for (const step of result.steps) {
+      const label = step.outcome.kind === "executed" ? "allowed" : step.outcome.kind === "approved" ? "approved" : "refused";
+      const detail = step.outcome.kind === "refused" ? step.outcome.reason : step.outcome.result.output;
+      io.out(`  ${step.toolCall.capability}: ${label} — ${detail}`);
+    }
+    io.out(`Final: ${result.finalText ?? `(no final answer — ${result.status})`}`);
+    const decision = store.addDecision("run", { agentId: agent.id, goal, domain }, result);
+    io.out(`Stored as local decision record #${decision.id} (pnpm run brad doctor shows the total count).`);
+    return result.status === "completed" ? EXIT.ok : EXIT.problem;
+  } finally {
+    store.close();
+  }
+}
+
 export async function run(argv: string[], io: Io): Promise<number> {
   const [command, sub] = positional(argv);
   switch (command) {
@@ -340,6 +437,8 @@ export async function run(argv: string[], io: Io): Promise<number> {
       if (sub === "demo") return learningDemo(io);
       io.err("Usage: pnpm run brad learning demo");
       return EXIT.problem;
+    case "run":
+      return runCommand(argv, io);
     case undefined:
     case "help":
       io.out(HELP);
