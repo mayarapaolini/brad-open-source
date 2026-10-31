@@ -46,7 +46,17 @@
 - [x] Inkus adapter implementation (`createInkusMemoryProvider`), backed by `agent_learnings`/`record_learning`/`recall_learnings` (Inkus `story-weaver` PR #130)
 - [x] offline pilot demonstrating record → new session → recall → apply → objective verification (`pnpm run brad learning demo`, synthetic data only)
 - [ ] consolidation, deduplication by similarity, retention policy, consent mechanism (Phase 2+, see [ADR 0006](adr/0006-continuous-learning-boundary.md))
-- [ ] verification against a real agent-execution runtime (none exists yet in Brad; D1 in ADR 0006)
+- [ ] verification against a real pilot task running through the agent harness below, with a real `ModelAdapter` (D1 in ADR 0006, partially resolved by ADR 0007)
+
+## Agent Harness — Phase 1
+
+- [x] `ModelAdapter`/`ToolExecutor`/`ApprovalBroker` contracts in `packages/harness`, independent of any LLM provider ([ADR 0007](adr/0007-agent-harness.md))
+- [x] `runTurn` loop: `policy-engine.evaluate()` as the real enforcement gate for every proposed tool call (not just simulation), step-budgeted so a model can never loop forever
+- [x] one real local `ToolExecutor` (`read_notes`, reading the life map), exercised end to end via `pnpm run brad run <agentId> "<goal>"`
+- [x] recalled learnings threaded into the model's context when an Inkus connection is wired up for the agent
+- [ ] a real `ModelAdapter` (no LLM provider connected yet — deliberate, separate step)
+- [ ] real `ToolExecutor`s for consequential capabilities (`send_message`, `create_event`, `delete_item`, `make_payment`) — approval today only unblocks the loop and records intent, nothing external is touched
+- [ ] approval UI in Studio (CLI-only this phase)
 
 ## Milestone 4 — Adapters
 
