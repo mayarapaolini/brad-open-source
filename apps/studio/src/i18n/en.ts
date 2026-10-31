@@ -478,6 +478,8 @@ export const en = {
   "audit.snapshot.before_answer": "before an answer",
   "audit.share": "Prepared a summary for {audience}: included {included}; left out {excluded}",
   "audit.kind.share": "share",
+  "audit.run": "Ran {agent} on “{goal}”: {steps} step(s), {status}",
+  "audit.kind.run": "run",
 
   "domain.family": "Family",
   "domain.work": "Work",

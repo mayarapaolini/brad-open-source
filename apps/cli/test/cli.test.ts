@@ -144,6 +144,37 @@ describe("brad CLI", () => {
     store.close();
   });
 
+  it("run: executes the harness loop against the real policy engine and stores a decision record", async () => {
+    expect(await brad("run")).toBe(EXIT.problem);
+    expect(err.at(-1)).toContain("Usage");
+
+    const store = new Store(join(dir, "data", "brad.db"));
+    const agents = generateDraftAgents(demoLifeMap).map((a) => (a.id === "agent-family" ? { ...a, state: "approved" as const } : a));
+    store.replaceAll(demoLifeMap, agents, []);
+    store.close();
+
+    expect(await brad("run agent-ghost goal")).toBe(EXIT.problem);
+    expect(err.at(-1)).toContain("unknown agent");
+
+    out = [];
+    const code = await run(["run", "agent-family", "Greet the user by name"], io());
+    // No read_notes grant exists for this agent in the demo fixture — the real policy engine
+    // denies it, so the tool is never executed; the CLI still finishes the loop and reports it.
+    expect(code).toBe(EXIT.ok);
+    const report = out.join("\n");
+    expect(report).toContain("No Inkus connection for this agent");
+    expect(report).toMatch(/read_notes: refused — denied by policy \(grant_present\)/);
+    expect(report).toContain("Final:");
+    expect(report).toContain("Stored as local decision record");
+
+    const after = new Store(join(dir, "data", "brad.db"));
+    expect(after.countDecisions()).toBe(1);
+    const [decision] = after.listDecisions(1);
+    expect(decision).toMatchObject({ kind: "run" });
+    expect((decision!.result as { status: string }).status).toBe("completed");
+    after.close();
+  });
+
   it("never writes the export file content to stderr and resolves paths from where it was run", async () => {
     seed();
     expect(await brad("export --out nested.json")).toBe(EXIT.ok);

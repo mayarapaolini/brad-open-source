@@ -13,6 +13,7 @@
     "@brad/api": "workspace:*",
     "@brad/discovery": "workspace:*",
     "@brad/domain": "workspace:*",
+    "@brad/harness": "workspace:*",
     "tsx": "^4.20.0"
   }
 }

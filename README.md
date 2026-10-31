@@ -50,6 +50,7 @@ pnpm run brad inkus check                      # read-only check of your Inkus s
 | --- | --- | --- |
 | Local Studio (EN/PT) | Verification against a real Inkus workspace | Encryption at rest for the local store |
 | Wheel of Life diagnostic | Inkus two-way sync: implemented and tested with a synthetic Inkus; real-workspace verification pending | Obsidian adapter |
+| Agent-execution harness (`packages/harness`): policy-gated tool loop, step-budgeted, CLI pilot (`brad run`) | A real model provider adapter for the harness | Real tool executors for consequential capabilities (send a message, pay, delete) |
 | Editable life map: goals, people, boundaries | | Real inbox and calendar connectors |
 | Draft agent generation (no grants) | | Narrow, confirm-first automation recipes |
 | Agent lifecycle with enforced requirements | | Threat model and security review |

@@ -83,6 +83,9 @@ importers:
       '@brad/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@brad/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
       tsx:
         specifier: ^4.20.0
         version: 4.23.15
@@ -162,6 +165,19 @@ importers:
         version: link:../domain
 
   packages/domain: {}
+
+  packages/harness:
+    dependencies:
+      '@brad/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@brad/policy-engine':
+        specifier: workspace:*
+        version: link:../policy-engine
+    devDependencies:
+      '@brad/agent-factory':
+        specifier: workspace:*
+        version: link:../agent-factory
 
   packages/policy-engine:
     dependencies:
