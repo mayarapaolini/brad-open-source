@@ -188,7 +188,7 @@ export interface IncomingItem {
 
 export interface DecisionRecord {
   id: number;
-  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction" | "sync" | "discovery" | "secretary" | "share";
+  kind: "priority" | "policy" | "lifecycle" | "grant" | "import" | "correction" | "sync" | "discovery" | "secretary" | "share" | "run";
   createdAt: string;
   input: unknown;
   result: unknown;
