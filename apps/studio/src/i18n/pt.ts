@@ -480,6 +480,8 @@ export const pt: Record<MessageKey, string> = {
   "audit.snapshot.before_answer": "antes de uma resposta",
   "audit.share": "Resumo preparado para {audience}: entrou {included}; ficou de fora {excluded}",
   "audit.kind.share": "compartilhar",
+  "audit.run": "{agent} executou “{goal}”: {steps} passo(s), {status}",
+  "audit.kind.run": "execução",
 
   "domain.family": "Família",
   "domain.work": "Trabalho",

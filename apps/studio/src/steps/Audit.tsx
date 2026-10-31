@@ -146,6 +146,13 @@ export function Audit({
         const excluded = (result.excluded as { domain: LifeDomainId }[]).map((e) => t(`domain.${e.domain}`)).join(", ") || "—";
         return t("audit.share", { audience: t(`context.${String(input.audience)}` as MessageKey), included, excluded });
       }
+      case "run":
+        return t("audit.run", {
+          agent: agentName(input.agentId),
+          goal: String(input.goal ?? ""),
+          steps: ((result.steps as unknown[] | undefined) ?? []).length,
+          status: String(result.status ?? "—"),
+        });
       case "import":
         if (input.action === "restore")
           return t(`audit.restore.${String(input.scope ?? "all")}` as MessageKey, { id: Number(input.snapshotId) });
