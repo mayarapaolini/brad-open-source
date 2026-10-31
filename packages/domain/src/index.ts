@@ -7,3 +7,5 @@ export * from "./agent";
 export * from "./export";
 export * from "./import-plan";
 export * from "./context";
+export * from "./learning";
+export * from "./verification";

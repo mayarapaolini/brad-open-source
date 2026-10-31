@@ -39,6 +39,15 @@
 - global and per-agent pause
 - connection health
 
+## Continuous Learning — Phase 1 (Foundation)
+
+- [x] generic contracts (`LearningEvent`, `MemoryProvider`, `VerificationInterface`) in `@brad/domain`, independent of any storage provider
+- [x] deterministic reference verifier (`syntheticRegressionVerifier`); no LLM grades its own output
+- [x] Inkus adapter implementation (`createInkusMemoryProvider`), backed by `agent_learnings`/`record_learning`/`recall_learnings` (Inkus `story-weaver` PR #130)
+- [x] offline pilot demonstrating record → new session → recall → apply → objective verification (`pnpm run brad learning demo`, synthetic data only)
+- [ ] consolidation, deduplication by similarity, retention policy, consent mechanism (Phase 2+, see [ADR 0006](adr/0006-continuous-learning-boundary.md))
+- [ ] verification against a real agent-execution runtime (none exists yet in Brad; D1 in ADR 0006)
+
 ## Milestone 4 — Adapters
 
 - Obsidian file adapter

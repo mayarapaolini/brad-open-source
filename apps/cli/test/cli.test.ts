@@ -121,6 +121,29 @@ describe("brad CLI", () => {
     expect(err.at(-1)).toContain("BRAD_INKUS_TOKEN");
   });
 
+  it("learning demo runs the full Phase 1 cycle against the synthetic workspace only, verifying objectively", async () => {
+    expect(await brad("learning demo")).toBe(EXIT.problem);
+    expect(err.at(-1)).toContain("BRAD_ADAPTER_INKUS_ENABLED");
+
+    const real = { BRAD_ADAPTER_INKUS_ENABLED: "true", BRAD_INKUS_MCP_URL: "http://127.0.0.1:9/mcp", BRAD_INKUS_TOKEN: "t" };
+    expect(await brad("learning demo", real)).toBe(EXIT.problem);
+    expect(err.at(-1)).toContain("synthetic");
+
+    const fake = { BRAD_ADAPTER_INKUS_ENABLED: "true", BRAD_INKUS_FAKE: "1" };
+    expect(await brad("learning demo", fake)).toBe(EXIT.ok);
+    const report = out.join("\n");
+    expect(report).toMatch(/Recorded learning/);
+    expect(report).toContain("Verification: pass");
+    expect(report).toContain("Stored as local decision record");
+
+    const store = new Store(join(dir, "data", "brad.db"));
+    expect(store.countDecisions()).toBe(1);
+    const [decision] = store.listDecisions(1);
+    expect(decision).toMatchObject({ kind: "correction" });
+    expect((decision!.result as { status: string }).status).toBe("pass");
+    store.close();
+  });
+
   it("never writes the export file content to stderr and resolves paths from where it was run", async () => {
     seed();
     expect(await brad("export --out nested.json")).toBe(EXIT.ok);
