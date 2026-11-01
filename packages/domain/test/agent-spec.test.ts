@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import Ajv2020 from "ajv/dist/2020";
 import { describe, expect, it } from "vitest";
 import {
   AgentSpecError,
@@ -14,7 +15,7 @@ import {
   type AgentSpecV1,
 } from "../src/agent-spec";
 
-// Agent Spec v1, conforme RFC-002 (rascunho no Inkus, aguarda aprovação da May).
+// Agent Spec v1, conforme RFC-002 (rascunho no Inkus, aguarda aprovação).
 // Dados fictícios apenas.
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,11 @@ const schema = JSON.parse(readFileSync(resolve(here, "../schema/agent-spec-v1.sc
   additionalProperties: boolean;
 };
 const spec = JSON.parse(readFileSync(resolve(here, "fixtures/agent-spec.synthetic.json"), "utf8")) as AgentSpecV1;
+const minimal = JSON.parse(readFileSync(resolve(here, "fixtures/agent-spec.minimal.json"), "utf8")) as AgentSpecV1;
+
+// Validador JSON Schema real (ajv, draft 2020-12). Serve para garantir que o schema e o validador TypeScript não divergem.
+const ajv = new Ajv2020({ allErrors: true, strict: true });
+const validateWithSchema = ajv.compile(schema);
 
 const frontmatter: AgentSpecFrontmatter = {
   id: "agent-exemplo",
@@ -164,5 +170,68 @@ describe("Agent Spec v1: segredos e export", () => {
   it("recusa export com spec inválido e não gera pacote", async () => {
     const invalid = { ...spec, grants: [] } as unknown as AgentSpecV1;
     await expect(buildAgentPackage(frontmatter, invalid)).rejects.toThrow("$.grants: unknown key");
+  });
+});
+
+type Json = Record<string, unknown>;
+const firstOf = (list: unknown, index = 0) => (list as Json[])[index] as Json;
+
+describe("Agent Spec v1: JSON Schema (ajv) e validador TypeScript não divergem", () => {
+  it("ambos aceitam a fixture sintética", () => {
+    expect(validateWithSchema(spec)).toBe(true);
+    expect(validateAgentSpec(spec)).toEqual([]);
+  });
+
+  it("ambos aceitam a fixture mínima", () => {
+    expect(validateWithSchema(minimal)).toBe(true);
+    expect(validateAgentSpec(minimal)).toEqual([]);
+  });
+
+  const mutations: [string, (s: Json) => void][] = [
+    ["chave extra no topo", (s) => (s.api_key = "x")],
+    ["grants no pacote", (s) => (s.grants = [])],
+    ["campo obrigatório ausente", (s) => delete s.mission],
+    ["custo negativo", (s) => (firstOf(s.routines).budget as Json).max_cost = -1],
+    ["max_seconds fracionário", (s) => (firstOf(s.routines).budget as Json).max_seconds = 1.5],
+    ["status de canal inválido", (s) => (firstOf(s.channels) as Json).status = "paused"],
+    ["pedido duplicado", (s) => ((s.permissions as Json).requested = ["read_notes", "read_notes"])],
+    ["modelo de papel ausente", (s) => delete (s.models as Json).research],
+    ["bloqueio entre contextos não booleano", (s) => ((s.context_isolation as Json).block_between_contexts = "yes")],
+    ["mission vazia", (s) => (s.mission = "")],
+  ];
+
+  it.each(mutations)("ambos rejeitam: %s", (_name, mutate) => {
+    const bad = clone(spec) as unknown as Json;
+    mutate(bad);
+    expect(validateWithSchema(bad)).toBe(false);
+    expect(validateAgentSpec(bad).length).toBeGreaterThan(0);
+  });
+
+  it("a fixture mínima não tem chaves fora do schema", () => {
+    expect(Object.keys(minimal).sort()).toEqual([...schema.required].sort());
+  });
+});
+
+describe("Agent Spec v1: segunda fixture (listas vazias)", () => {
+  it("exportar, importar e exportar de novo gera os mesmos bytes", async () => {
+    const first = await buildAgentPackage(frontmatter, minimal);
+    const parsed = await parseAgentPackage(first);
+    const second = await buildAgentPackage(parsed.frontmatter, parsed.spec);
+    expect(second).toEqual(first);
+    expect(parsed.spec).toEqual(minimal);
+  });
+});
+
+// Credenciais montadas em tempo de execução: o texto do teste não contém um token que pareça real.
+describe("Agent Spec v1: padrões de credencial ampliados", () => {
+  it.each([
+    ["GitHub classic", "ghp" + "_" + "A".repeat(36)],
+    ["GitHub fine-grained", "github" + "_pat_" + "B".repeat(40)],
+    ["Slack", "xox" + "b-" + "1".repeat(20)],
+    ["Google API", "AIza" + "C".repeat(35)],
+  ])("recusa export com token do tipo %s", async (_name, token) => {
+    await expect(buildAgentPackage(frontmatter, { ...spec, mission: `Usar ${token} para sincronizar.` })).rejects.toThrow(
+      "export aborted, no file written",
+    );
   });
 });

@@ -1,0 +1,19 @@
+{
+  "mission": "Acompanhar uma lista de leitura sintética, sem rotinas nem canais.",
+  "scope": "Agente Exemplo mínimo. Somente dados fictícios.",
+  "permissions": {
+    "requested": []
+  },
+  "confirmation_required": [],
+  "models": {
+    "plan": "example-model-small",
+    "implement": "example-model-small",
+    "research": "example-model-small"
+  },
+  "routines": [],
+  "channels": [],
+  "context_isolation": {
+    "contexts": [],
+    "block_between_contexts": false
+  }
+}

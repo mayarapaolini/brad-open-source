@@ -1,4 +1,4 @@
-// Agent Spec v1: pacote de um agente em formato aberto. Fonte: RFC-002 (rascunho, aguarda aprovação da May).
+// Agent Spec v1: pacote de um agente em formato aberto. Fonte: RFC-002 (rascunho, aguarda aprovação).
 // Módulo sem dependências de Node (usa crypto.subtle), porque o Studio também importa @brad/domain.
 // Pedido não é permissão: permissions.requested nunca concede acesso, e grants nunca entram no pacote.
 
@@ -193,6 +193,10 @@ const SECRET_PATTERNS: RegExp[] = [
   /\bBearer\s+[A-Za-z0-9._~+/-]{16,}/i,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /\bAKIA[0-9A-Z]{16}\b/,
+  /\bghp_[A-Za-z0-9]{20,}/,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/,
+  /\bxox[abposr]-[A-Za-z0-9-]{10,}/,
+  /\bAIza[0-9A-Za-z_-]{35}/,
   /\b(?:api[_-]?key|secret|token|password)\s*[:=]\s*["']?[^\s"',]{8,}/i,
 ];
 
