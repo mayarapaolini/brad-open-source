@@ -50,7 +50,7 @@ Brad keeps that layer separate from the runtime that executes the agents, so the
 
 ## Your agents are yours
 
-With Brad, you use the same agents with any provider or runtime, including several at once, without losing your settings: they live in an open document that you own, in the docs repository you choose, and are reapplied on each runtime.
+**Roadmap:** Brad is being designed so that you can use the same agents with any provider or runtime, including several at once, without losing your settings. The goal is that they live in an open document that you own, in the docs repository you choose, and are reapplied on each runtime.
 
 > **Roadmap, not shipped yet.** The parts of this section marked *Roadmap* are not in the code today. Running the same agents on several runtimes at the same time has not been built or tested.
 

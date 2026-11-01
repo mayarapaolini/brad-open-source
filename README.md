@@ -2,7 +2,7 @@
 
 **Brad is a local-first control plane that transforms a person's priorities, relationships and constraints into a governed portfolio of AI agents.**
 
-With Brad, you use the same agents with any provider or runtime, including several at once, without losing your settings: they live in an open document that you own, in the docs repository you choose, and are reapplied on each runtime.
+**Roadmap:** Brad is being designed so that you can use the same agents with any provider or runtime, including several at once, without losing your settings. The goal is that they live in an open document that you own, in the docs repository you choose, and are reapplied on each runtime.
 
 > **Roadmap, not shipped yet.** Today the repo has JSON export and import of your agents and the Inkus integration. Choosing your own docs repository, running the same agents on several runtimes at the same time, and a runtime or knowledge provider interface do not exist in the code yet. Hermes execution and Obsidian are planned. See [how Brad works](docs/HOW-IT-WORKS.md#your-agents-are-yours).
 
