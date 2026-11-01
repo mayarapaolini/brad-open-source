@@ -9,3 +9,4 @@ export * from "./import-plan";
 export * from "./context";
 export * from "./learning";
 export * from "./verification";
+export * from "./agent-spec";

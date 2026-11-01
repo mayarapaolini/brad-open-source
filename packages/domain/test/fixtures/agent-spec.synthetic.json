@@ -1,37 +1,33 @@
 {
-  "specVersion": 1,
-  "id": "agent-example-planner",
-  "name": "Example planner",
-  "mission": "Plan the week for the synthetic profile and list open items.",
-  "scope": {
-    "domains": ["work"],
-    "description": "Synthetic example. No real data."
-  },
+  "mission": "Planejar a semana do perfil sintético e listar os itens em aberto.",
+  "scope": "Agente Exemplo. Somente dados fictícios.",
   "permissions": {
-    "capabilities": ["read_notes"]
+    "requested": ["read_notes"]
   },
-  "confirmRequired": ["send_message", "delete_item"],
+  "confirmation_required": ["send_message", "delete_item"],
   "models": {
     "plan": "example-model-large",
     "implement": "example-model-small",
-    "search": "example-model-search"
+    "research": "example-model-search"
   },
   "routines": [
     {
-      "id": "weekly-review",
-      "schedule": "0 9 * * 1",
+      "name": "revisao-semanal",
+      "cron": "0 9 * * 1",
+      "enabled": true,
+      "respect_quiet_hours": true,
       "budget": {
-        "maxSeconds": 300,
-        "maxToolCalls": 20,
-        "maxCostUsd": 0.5
+        "max_seconds": 300,
+        "max_tool_calls": 20,
+        "max_cost": 0.5
       }
     }
   ],
   "channels": [
-    { "channel": "local-notes", "route": "agent-example-planner" }
+    { "channel": "notas-locais", "agent_id": "agent-exemplo", "status": "active" }
   ],
-  "contextIsolation": {
-    "context": "work",
-    "bridges": []
+  "context_isolation": {
+    "contexts": ["trabalho"],
+    "block_between_contexts": true
   }
 }

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:brad:schema:agent-spec-v1",
+  "title": "Brad Agent Spec v1 (spec.json)",
+  "description": "Structured data for one agent. Source: RFC-002 (draft, not approved). Requests are not grants: permissions.requested never gives access. Grants never belong to the package.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mission", "scope", "permissions", "confirmation_required", "models", "routines", "channels", "context_isolation"],
+  "properties": {
+    "mission": { "type": "string", "minLength": 1 },
+    "scope": { "type": "string", "minLength": 1 },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested"],
+      "properties": {
+        "requested": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "confirmation_required": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true,
+      "description": "Actions that need human confirmation before they run."
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan", "implement", "research"],
+      "properties": {
+        "plan": { "type": "string", "minLength": 1 },
+        "implement": { "type": "string", "minLength": 1 },
+        "research": { "type": "string", "minLength": 1 }
+      }
+    },
+    "routines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "cron", "enabled", "respect_quiet_hours", "budget"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "cron": { "type": "string", "minLength": 1 },
+          "enabled": { "type": "boolean" },
+          "respect_quiet_hours": { "type": "boolean" },
+          "budget": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["max_seconds", "max_tool_calls", "max_cost"],
+            "properties": {
+              "max_seconds": { "type": "integer", "minimum": 1 },
+              "max_tool_calls": { "type": "integer", "minimum": 0 },
+              "max_cost": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["channel", "agent_id", "status"],
+        "properties": {
+          "channel": { "type": "string", "minLength": 1 },
+          "agent_id": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "enum": ["active", "archived"] }
+        }
+      }
+    },
+    "context_isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contexts", "block_between_contexts"],
+      "properties": {
+        "contexts": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "block_between_contexts": { "type": "boolean" }
+      }
+    }
+  }
+}

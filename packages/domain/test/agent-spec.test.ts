@@ -2,166 +2,167 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  AgentSpecError,
+  buildAgentPackage,
+  canonicalJson,
+  parseAgentPackage,
+  validateAgentSpec,
+  validateAgentSpecFrontmatter,
+  type AgentPackageFiles,
+  type AgentSpecFrontmatter,
+  type AgentSpecV1,
+} from "../src/agent-spec";
 
-// Draft for Agent Spec v1 (RFC-002 pending). Only the schema contract and round-trip are covered here.
-// Parse and serialise helpers wait for RFC-002.
+// Agent Spec v1, conforme RFC-002 (rascunho no Inkus, aguarda aprovação da May).
+// Dados fictícios apenas.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const schema = JSON.parse(readFileSync(resolve(here, "../schema/agent-spec.v1.schema.json"), "utf8")) as Schema;
-const fixture = JSON.parse(readFileSync(resolve(here, "fixtures/agent-spec.synthetic.json"), "utf8")) as Record<string, unknown>;
-
-type Schema = {
-  $schema?: string;
-  const?: unknown;
-  type?: "object" | "array" | "string" | "integer" | "number";
-  enum?: unknown[];
-  required?: string[];
-  properties?: Record<string, Schema>;
-  additionalProperties?: boolean | Schema;
-  items?: Schema;
-  uniqueItems?: boolean;
-  minLength?: number;
-  minimum?: number;
+const schema = JSON.parse(readFileSync(resolve(here, "../schema/agent-spec-v1.schema.json"), "utf8")) as {
+  $schema: string;
+  required: string[];
+  properties: Record<string, unknown>;
+  additionalProperties: boolean;
 };
+const spec = JSON.parse(readFileSync(resolve(here, "fixtures/agent-spec.synthetic.json"), "utf8")) as AgentSpecV1;
 
-// Verificador mínimo do subconjunto de JSON Schema que o arquivo usa. O projeto não tem um validador
-// de JSON Schema como dependência, e este teste não adiciona nenhuma.
-function check(s: Schema, value: unknown, path: string, errors: string[]): void {
-  if (s.const !== undefined && value !== s.const) errors.push(`${path}: expected ${JSON.stringify(s.const)}`);
-  if (s.enum && !s.enum.includes(value)) errors.push(`${path}: not one of ${JSON.stringify(s.enum)}`);
-  if (s.type === "object") {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return void errors.push(`${path}: expected object`);
-    const obj = value as Record<string, unknown>;
-    for (const key of s.required ?? []) if (!(key in obj)) errors.push(`${path}.${key}: missing`);
-    for (const key of Object.keys(obj)) {
-      const sub = s.properties?.[key];
-      if (sub) check(sub, obj[key], `${path}.${key}`, errors);
-      else if (s.additionalProperties === false) errors.push(`${path}.${key}: unknown key`);
-      else if (typeof s.additionalProperties === "object") check(s.additionalProperties, obj[key], `${path}.${key}`, errors);
-    }
-    return;
-  }
-  if (s.type === "array") {
-    if (!Array.isArray(value)) return void errors.push(`${path}: expected array`);
-    value.forEach((item, i) => s.items && check(s.items, item, `${path}[${i}]`, errors));
-    if (s.uniqueItems && new Set(value.map((v) => JSON.stringify(v))).size !== value.length) errors.push(`${path}: items must be unique`);
-    return;
-  }
-  if (s.type === "string") {
-    if (typeof value !== "string") return void errors.push(`${path}: expected string`);
-    if (s.minLength !== undefined && value.length < s.minLength) errors.push(`${path}: shorter than ${s.minLength}`);
-    return;
-  }
-  if (s.type === "integer" || s.type === "number") {
-    if (typeof value !== "number" || (s.type === "integer" && !Number.isInteger(value))) return void errors.push(`${path}: expected ${s.type}`);
-    if (s.minimum !== undefined && value < s.minimum) errors.push(`${path}: below ${s.minimum}`);
-  }
-}
-
-function validate(value: unknown): string[] {
-  const errors: string[] = [];
-  check(schema, value, "$", errors);
-  return errors;
-}
+const frontmatter: AgentSpecFrontmatter = {
+  id: "agent-exemplo",
+  name: "Agente Exemplo",
+  version: 1,
+  schema_version: 1,
+  status: "draft",
+};
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
-describe("Agent Spec v1: schema", () => {
-  it("declares version 1 and the required fields from the spec", () => {
-    expect(schema.properties?.specVersion).toEqual({ const: 1 });
-    expect(schema.required).toEqual([
-      "specVersion",
-      "id",
-      "name",
-      "mission",
-      "scope",
-      "permissions",
-      "confirmRequired",
-      "models",
-      "routines",
-      "channels",
-      "contextIsolation",
-    ]);
-  });
-
-  it("declares JSON Schema draft 2020-12", () => {
+describe("Agent Spec v1: contrato do schema", () => {
+  it("declara JSON Schema 2020-12 e rejeita chaves extras", () => {
     expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
+    expect(schema.additionalProperties).toBe(false);
+  });
+
+  it("o validador cobre exatamente os campos obrigatórios do schema", () => {
+    expect(schema.required).toEqual(["mission", "scope", "permissions", "confirmation_required", "models", "routines", "channels", "context_isolation"]);
+    expect(Object.keys(schema.properties).sort()).toEqual([...schema.required].sort());
   });
 });
 
-describe("Agent Spec v1: fixture validation", () => {
-  it("accepts the synthetic fixture", () => {
-    expect(validate(fixture)).toEqual([]);
+describe("Agent Spec v1: validação", () => {
+  it("aceita a fixture sintética", () => {
+    expect(validateAgentSpec(spec)).toEqual([]);
   });
 
-  it("rejects an unknown top-level key", () => {
-    const spec = clone(fixture);
-    spec.apiKey = "not-allowed";
-    expect(validate(spec)).toContain("$.apiKey: unknown key");
+  it("aceita o frontmatter do agent.md", () => {
+    expect(validateAgentSpecFrontmatter(frontmatter)).toEqual([]);
   });
 
-  it("rejects a missing required field", () => {
-    const spec = clone(fixture);
-    delete spec.mission;
-    expect(validate(spec)).toContain("$.mission: missing");
+  it("rejeita chave desconhecida no topo", () => {
+    expect(validateAgentSpec({ ...spec, api_key: "x" })).toContain("$.api_key: unknown key");
   });
 
-  it("rejects an unknown key inside a routine budget", () => {
-    const spec = clone(fixture) as { routines: { budget: Record<string, unknown> }[] };
-    spec.routines[0]!.budget.maxTokens = 1000;
-    expect(validate(spec)).toContain("$.routines[0].budget.maxTokens: unknown key");
+  it("rejeita grants dentro do pacote", () => {
+    expect(validateAgentSpec({ ...spec, grants: [] })).toContain("$.grants: unknown key");
   });
 
-  it("rejects a negative cost budget", () => {
-    const spec = clone(fixture) as { routines: { budget: { maxCostUsd: number } }[] };
-    spec.routines[0]!.budget.maxCostUsd = -1;
-    expect(validate(spec)).toContain("$.routines[0].budget.maxCostUsd: below 0");
+  it("rejeita campo obrigatório ausente", () => {
+    const missing = clone(spec) as Partial<AgentSpecV1>;
+    delete missing.mission;
+    expect(validateAgentSpec(missing)).toContain("$.mission: missing");
   });
 
-  it("rejects a context outside personal and work", () => {
-    const spec = clone(fixture) as { contextIsolation: { context: string } };
-    spec.contextIsolation.context = "shared";
-    expect(validate(spec)).toContain("$.contextIsolation.context: not one of [\"personal\",\"work\"]");
+  it("rejeita custo negativo no orçamento", () => {
+    const bad = clone(spec);
+    bad.routines[0]!.budget.max_cost = -1;
+    expect(validateAgentSpec(bad)).toContain("$.routines[0].budget.max_cost: below 0");
   });
 
-  it("rejects duplicate confirmation actions", () => {
-    const spec = clone(fixture);
-    spec.confirmRequired = ["send_message", "send_message"];
-    expect(validate(spec)).toContain("$.confirmRequired: items must be unique");
+  it("rejeita max_seconds fracionário", () => {
+    const bad = clone(spec);
+    bad.routines[0]!.budget.max_seconds = 1.5;
+    expect(validateAgentSpec(bad)).toContain("$.routines[0].budget.max_seconds: expected integer");
   });
 
-  it("rejects a non-integer tool-call budget", () => {
-    const spec = clone(fixture) as { routines: { budget: { maxToolCalls: number } }[] };
-    spec.routines[0]!.budget.maxToolCalls = 2.5;
-    expect(validate(spec)).toContain("$.routines[0].budget.maxToolCalls: expected integer");
+  it("rejeita status de canal fora de active e archived", () => {
+    const bad = clone(spec) as unknown as { channels: { status: string }[] };
+    bad.channels[0]!.status = "paused";
+    expect(validateAgentSpec(bad)).toContain('$.channels[0].status: not one of ["active","archived"]');
+  });
+
+  it("rejeita pedido duplicado em permissions.requested", () => {
+    const bad = clone(spec);
+    bad.permissions.requested = ["read_notes", "read_notes"];
+    expect(validateAgentSpec(bad)).toContain("$.permissions.requested: items must be unique");
+  });
+
+  it("rejeita modelo de papel ausente", () => {
+    const bad = clone(spec) as unknown as { models: Record<string, string> };
+    delete bad.models.research;
+    expect(validateAgentSpec(bad)).toContain("$.models.research: missing");
+  });
+
+  it("rejeita status de ciclo de vida desconhecido no frontmatter", () => {
+    expect(validateAgentSpecFrontmatter({ ...frontmatter, status: "live" })).toContain("$.status: not a lifecycle state");
+  });
+
+  it("rejeita schema_version diferente de 1", () => {
+    expect(validateAgentSpecFrontmatter({ ...frontmatter, schema_version: 2 })).toContain("$.schema_version: must be 1");
   });
 });
 
-describe("Agent Spec v1: round-trip", () => {
-  it("JSON survives a round-trip without losing any field", () => {
-    const again = JSON.parse(JSON.stringify(fixture)) as Record<string, unknown>;
-    expect(again).toEqual(fixture);
-    expect(validate(again)).toEqual([]);
+describe("Agent Spec v1: round-trip com hash", () => {
+  it("exportar, importar e exportar de novo gera os mesmos bytes e o mesmo manifest", async () => {
+    const first = await buildAgentPackage(frontmatter, spec);
+    const parsed = await parseAgentPackage(first);
+    const second = await buildAgentPackage(parsed.frontmatter, parsed.spec);
+    expect(second).toEqual(first);
+    expect(second["manifest.json"]).toBe(first["manifest.json"]);
   });
 
-  it("pretty-printed output is stable across a second round-trip", () => {
-    const once = JSON.stringify(fixture, null, 2);
-    const twice = JSON.stringify(JSON.parse(once), null, 2);
-    expect(twice).toBe(once);
+  it("não perde nenhum campo do spec", async () => {
+    const files = await buildAgentPackage(frontmatter, spec);
+    const { spec: back } = await parseAgentPackage(files);
+    expect(back).toEqual(spec);
   });
 
-  it("keeps every field of the spec, including empty lists and zero budgets", () => {
-    const spec = clone(fixture) as Record<string, unknown> & { routines: { budget: { maxToolCalls: number } }[] };
-    spec.confirmRequired = [];
-    spec.routines[0]!.budget.maxToolCalls = 0;
-    const again = JSON.parse(JSON.stringify(spec)) as typeof spec;
-    expect(again.confirmRequired).toEqual([]);
-    expect(again.routines[0]!.budget.maxToolCalls).toBe(0);
-    expect(validate(again)).toEqual([]);
+  it("a saída é LF, UTF-8 e termina com nova linha", async () => {
+    const files = await buildAgentPackage(frontmatter, spec);
+    for (const name of ["agent.md", "spec.json", "manifest.json"] as const) {
+      expect(files[name]).not.toContain("\r");
+      expect(files[name].endsWith("\n")).toBe(true);
+    }
   });
 
-  it("the fixture contains only synthetic identifiers", () => {
-    expect(String(fixture.name)).toMatch(/Example/);
-    expect(JSON.stringify(fixture)).not.toMatch(/Gedanken|Hermes|mayar/i);
+  it("não inclui timestamps", async () => {
+    const files = await buildAgentPackage(frontmatter, spec);
+    expect(JSON.stringify(files)).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("ordena chaves de forma determinística, independente da ordem de entrada", () => {
+    expect(canonicalJson({ b: 1, a: { d: 2, c: 3 } })).toBe('{\n  "a": {\n    "c": 3,\n    "d": 2\n  },\n  "b": 1\n}\n');
+  });
+
+  it("detecta arquivo alterado depois do export", async () => {
+    const files = await buildAgentPackage(frontmatter, spec);
+    const tampered: AgentPackageFiles = { ...files, "spec.json": files["spec.json"].replace("Planejar", "Editar") };
+    await expect(parseAgentPackage(tampered)).rejects.toThrow("spec.json: hash does not match manifest");
+  });
+});
+
+describe("Agent Spec v1: segredos e export", () => {
+  it("recusa exportar um token falso e não devolve arquivo", async () => {
+    const leaky = { ...spec, mission: "Usar o token inkus_pat_FAKE0000000000000000 para sincronizar." };
+    await expect(buildAgentPackage(frontmatter, leaky)).rejects.toBeInstanceOf(AgentSpecError);
+    await expect(buildAgentPackage(frontmatter, leaky)).rejects.toThrow("export aborted, no file written");
+  });
+
+  it("recusa chave de API no texto do scope", async () => {
+    const leaky = { ...spec, scope: "api_key = FAKE_SYNTHETIC_KEY_123456" };
+    await expect(buildAgentPackage(frontmatter, leaky)).rejects.toThrow("export aborted");
+  });
+
+  it("recusa export com spec inválido e não gera pacote", async () => {
+    const invalid = { ...spec, grants: [] } as unknown as AgentSpecV1;
+    await expect(buildAgentPackage(frontmatter, invalid)).rejects.toThrow("$.grants: unknown key");
   });
 });
