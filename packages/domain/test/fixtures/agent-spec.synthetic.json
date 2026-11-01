@@ -1,0 +1,37 @@
+{
+  "specVersion": 1,
+  "id": "agent-example-planner",
+  "name": "Example planner",
+  "mission": "Plan the week for the synthetic profile and list open items.",
+  "scope": {
+    "domains": ["work"],
+    "description": "Synthetic example. No real data."
+  },
+  "permissions": {
+    "capabilities": ["read_notes"]
+  },
+  "confirmRequired": ["send_message", "delete_item"],
+  "models": {
+    "plan": "example-model-large",
+    "implement": "example-model-small",
+    "search": "example-model-search"
+  },
+  "routines": [
+    {
+      "id": "weekly-review",
+      "schedule": "0 9 * * 1",
+      "budget": {
+        "maxSeconds": 300,
+        "maxToolCalls": 20,
+        "maxCostUsd": 0.5
+      }
+    }
+  ],
+  "channels": [
+    { "channel": "local-notes", "route": "agent-example-planner" }
+  ],
+  "contextIsolation": {
+    "context": "work",
+    "bridges": []
+  }
+}
