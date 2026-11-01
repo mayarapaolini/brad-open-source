@@ -2,9 +2,15 @@
 
 **Brad is a local-first control plane that transforms a person's priorities, relationships and constraints into a governed portfolio of AI agents.**
 
+With Brad, you use the same agents with any provider or runtime, including several at once, without losing your settings: they live in an open document that you own, in the docs repository you choose, and are reapplied on each runtime.
+
+> **Roadmap, not shipped yet.** Today the repo has JSON export and import of your agents and the Inkus integration. Choosing your own docs repository, running the same agents on several runtimes at the same time, and a runtime or knowledge provider interface do not exist in the code yet. Hermes execution and Obsidian are planned. See [how Brad works](docs/HOW-IT-WORKS.md#your-agents-are-yours).
+
 > **Status:** functional local MVP. The diagnostic, adaptive discovery, secretary, life map, agent generation, lifecycle, permission grants, policy simulation, correction loop, audit, version history, import/export and CLI run today. The Inkus adapter (agent sync, interview catalog and answers, draft versions) is implemented and tested against a synthetic Inkus and a local MCP server; the connection to a real Inkus workspace is not verified yet (see [the runbook](docs/INTEGRATIONS.md#verifying-against-your-inkus)). Other adapters and real-world inbox/calendar integrations are not implemented.
 
 ![Brad Studio demo: diagnostic, draft agents, explained prioritisation, policy decisions, governance and audit](docs/assets/demo.gif)
+
+New here? [How Brad works](docs/HOW-IT-WORKS.md) explains the idea in plain language before you read the technical docs.
 
 ## Run it
 
