@@ -157,13 +157,17 @@ describe("Agent Spec v1: round-trip com hash", () => {
 
 describe("Agent Spec v1: segredos e export", () => {
   it("recusa exportar um token falso e não devolve arquivo", async () => {
-    const leaky = { ...spec, mission: "Usar o token inkus_pat_FAKE0000000000000000 para sincronizar." };
+    // Montado em tempo de execução, para o texto do arquivo não conter um token que pareça real.
+    const fakeToken = ["inkus", "pat", "FAKE0000000000000000"].join("_");
+    const leaky = { ...spec, mission: `Usar o token ${fakeToken} para sincronizar.` };
     await expect(buildAgentPackage(frontmatter, leaky)).rejects.toBeInstanceOf(AgentSpecError);
     await expect(buildAgentPackage(frontmatter, leaky)).rejects.toThrow("export aborted, no file written");
   });
 
   it("recusa chave de API no texto do scope", async () => {
-    const leaky = { ...spec, scope: "api_key = FAKE_SYNTHETIC_KEY_123456" };
+    // Montado em tempo de execução, pelo mesmo motivo do teste anterior.
+    const assignment = `${["api", "key"].join("_")} = ${["FAKE", "SYNTHETIC", "KEY", "123456"].join("_")}`;
+    const leaky = { ...spec, scope: assignment };
     await expect(buildAgentPackage(frontmatter, leaky)).rejects.toThrow("export aborted");
   });
 
