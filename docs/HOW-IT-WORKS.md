@@ -8,7 +8,7 @@ This page is a plain-language tour. For the current status of each feature, see 
 
 Most agent apps are good at running agents: chatting, using tools, picking a model, scheduling tasks. They are weaker at continuity. The rules for each agent, what it may do on its own, what context it can see and what you already decided tend to live inside one app. Switch apps or models, and that setup is lost or has to be rebuilt by hand.
 
-Brad keeps that layer separate from the runtime that executes the agents, so the setup survives a change of tool.
+Brad keeps that layer separate from the runtime that executes the agents, so the setup is meant to survive a change of tool.
 
 ## The core flow
 
