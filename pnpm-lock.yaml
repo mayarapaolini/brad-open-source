@@ -164,7 +164,11 @@ importers:
         specifier: workspace:*
         version: link:../domain
 
-  packages/domain: {}
+  packages/domain:
+    devDependencies:
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
 
   packages/harness:
     dependencies:

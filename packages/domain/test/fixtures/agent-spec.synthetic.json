@@ -1,0 +1,33 @@
+{
+  "mission": "Planejar a semana do perfil sintético e listar os itens em aberto.",
+  "scope": "Agente Exemplo. Somente dados fictícios.",
+  "permissions": {
+    "requested": ["read_notes"]
+  },
+  "confirmation_required": ["send_message", "delete_item"],
+  "models": {
+    "plan": "example-model-large",
+    "implement": "example-model-small",
+    "research": "example-model-search"
+  },
+  "routines": [
+    {
+      "name": "revisao-semanal",
+      "cron": "0 9 * * 1",
+      "enabled": true,
+      "respect_quiet_hours": true,
+      "budget": {
+        "max_seconds": 300,
+        "max_tool_calls": 20,
+        "max_cost": 0.5
+      }
+    }
+  ],
+  "channels": [
+    { "channel": "notas-locais", "agent_id": "agent-exemplo", "status": "active" }
+  ],
+  "context_isolation": {
+    "contexts": ["trabalho"],
+    "block_between_contexts": true
+  }
+}
