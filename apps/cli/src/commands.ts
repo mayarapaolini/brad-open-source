@@ -308,11 +308,11 @@ async function learningDemo(io: Io): Promise<number> {
     const draftGreeting = async (useMemory: boolean) => {
       const learnings = useMemory ? await reconnected.recall({ actorId: pilot.id }) : [];
       const applies = learnings.some((l) => l.content.includes("greet the user by name"));
-      return applies ? "Hello, Mayara!" : "Hello!";
+      return applies ? "Hello, Exemplo!" : "Hello!";
     };
 
     const result = await syntheticRegressionVerifier.verify(
-      { id: "learning-demo-greeting", before: () => draftGreeting(false), after: () => draftGreeting(true), isCorrect: (after) => typeof after === "string" && after.includes("Mayara") },
+      { id: "learning-demo-greeting", before: () => draftGreeting(false), after: () => draftGreeting(true), isCorrect: (after) => typeof after === "string" && after.includes("Exemplo") },
       { agentVersion: "cli-learning-demo-1", runId: `run-${Date.now()}` },
     );
 

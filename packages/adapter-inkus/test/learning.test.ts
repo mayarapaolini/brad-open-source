@@ -93,7 +93,7 @@ describe("createInkusMemoryProvider — Phase 1 end-to-end cycle (synthetic data
     const draftGreeting = async (useMemory: boolean) => {
       const learnings = useMemory ? await provider.recall({ actorId }) : [];
       const appliesCorrection = learnings.some((l) => l.content.includes("greet the user by name"));
-      return appliesCorrection ? "Hello, Mayara!" : "Hello!";
+      return appliesCorrection ? "Hello, Exemplo!" : "Hello!";
     };
 
     const result = await syntheticRegressionVerifier.verify(
@@ -101,12 +101,12 @@ describe("createInkusMemoryProvider — Phase 1 end-to-end cycle (synthetic data
         id: "greeting-regression",
         before: () => draftGreeting(false),
         after: () => draftGreeting(true),
-        isCorrect: (after) => typeof after === "string" && after.includes("Mayara"),
+        isCorrect: (after) => typeof after === "string" && after.includes("Exemplo"),
       },
       { agentVersion: "pilot-1", runId: "run-greeting-1" },
     );
     expect(result.status).toBe("pass");
-    expect(JSON.parse(result.evidence)).toMatchObject({ before: "Hello!", after: "Hello, Mayara!" });
+    expect(JSON.parse(result.evidence)).toMatchObject({ before: "Hello!", after: "Hello, Exemplo!" });
   });
 
   it("does not let an irrelevant memory artificially pass the verifier (negative test, PRD AC12)", async () => {
@@ -118,11 +118,11 @@ describe("createInkusMemoryProvider — Phase 1 end-to-end cycle (synthetic data
     const draftGreeting = async () => {
       const learnings = await provider.recall({ actorId });
       const appliesCorrection = learnings.some((l) => l.content.includes("greet the user by name"));
-      return appliesCorrection ? "Hello, Mayara!" : "Hello!";
+      return appliesCorrection ? "Hello, Exemplo!" : "Hello!";
     };
 
     const result = await syntheticRegressionVerifier.verify(
-      { id: "greeting-regression-irrelevant", before: draftGreeting, after: draftGreeting, isCorrect: (after) => typeof after === "string" && after.includes("Mayara") },
+      { id: "greeting-regression-irrelevant", before: draftGreeting, after: draftGreeting, isCorrect: (after) => typeof after === "string" && after.includes("Exemplo") },
       { agentVersion: "pilot-1", runId: "run-greeting-2" },
     );
     expect(result.status).toBe("fail");
