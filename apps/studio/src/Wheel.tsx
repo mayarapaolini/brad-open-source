@@ -2,6 +2,8 @@ import type { DomainAssessment } from "@brad/domain";
 import { useI18n } from "./i18n";
 
 const SIZE = 320;
+/** Espaço para os rótulos fora do círculo: sem ele, "Trabalho" e "Desenvolvimento pessoal" passam da borda. */
+const PAD = 48;
 const CENTER = SIZE / 2;
 const RADIUS = 120;
 
@@ -23,7 +25,7 @@ export function Wheel({ assessments }: { assessments: DomainAssessment[] }) {
   const count = assessments.length;
   return (
     <figure className="wheel">
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={t("diagnostic.legend")}>
+      <svg viewBox={`${-PAD} ${-PAD} ${SIZE + 2 * PAD} ${SIZE + 2 * PAD}`} role="img" aria-label={t("diagnostic.legend")}>
         {[2, 4, 6, 8, 10].map((v) => (
           <circle key={v} cx={CENTER} cy={CENTER} r={(v / 10) * RADIUS} className="ring" />
         ))}
