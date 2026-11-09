@@ -94,9 +94,12 @@ describe("API", () => {
     expect((withoutAssume.json.decision as { outcome: string }).outcome).toBe("deny");
 
     const withAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved", assumeGrant: true });
-    const decision = withAssume.json.decision as { outcome: string; decidedBy: string };
-    expect(decision.decidedBy).not.toBe("grant_valid");
-    expect(decision.decidedBy).not.toBe("grant_present");
+    const decision = withAssume.json.decision as { outcome: string; decidedBy: string; trace: { rule: string; status: string; params: Record<string, string> }[] };
+    expect(decision.outcome).toBe("allow");
+    expect(decision.decidedBy).toBe("all_rules_passed");
+    expect(decision.trace).toContainEqual(
+      expect.objectContaining({ rule: "grant_present", status: "pass", params: { grantId: "g-simulated" } }),
+    );
 
     // The simulation must never persist the simulated grant back to the store.
     const grants = (await call("GET", "/api/agents")).json.grants as { id: string }[];
@@ -124,9 +127,12 @@ describe("API", () => {
     expect((withoutAssume.json.decision as { decidedBy: string }).decidedBy).toBe("grant_valid");
 
     const withAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved", assumeGrant: true });
-    const decision = withAssume.json.decision as { decidedBy: string };
-    expect(decision.decidedBy).not.toBe("grant_valid");
-    expect(decision.decidedBy).not.toBe("grant_present");
+    const decision = withAssume.json.decision as { outcome: string; decidedBy: string; trace: { rule: string; status: string; params: Record<string, string> }[] };
+    expect(decision.outcome).toBe("allow");
+    expect(decision.decidedBy).toBe("all_rules_passed");
+    expect(decision.trace).toContainEqual(
+      expect.objectContaining({ rule: "grant_present", status: "pass", params: { grantId: "g-simulated" } }),
+    );
 
     const grants = (await call("GET", "/api/agents")).json.grants as { id: string }[];
     expect(grants.length).toBe(countBefore);
@@ -150,15 +156,14 @@ describe("API", () => {
 
     const before = (await call("GET", "/api/agents")).json.grants as { id: string }[];
     expect(before.map((g) => g.id)).toContain("g-valid-test");
-    const countBefore = before.length;
 
     const withAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved", assumeGrant: true });
     expect((withAssume.json.decision as { decidedBy: string }).decidedBy).not.toBe("grant_valid");
     expect((withAssume.json.decision as { decidedBy: string }).decidedBy).not.toBe("grant_present");
 
+    // Full object equality, not just ids - nothing about the existing grant (dates, revokedAt, purpose) changed either.
     const after = (await call("GET", "/api/agents")).json.grants as { id: string }[];
-    expect(after.map((g) => g.id)).toEqual(before.map((g) => g.id));
-    expect(after.length).toBe(countBefore);
+    expect(after).toEqual(before);
   });
 
   it("rejects invalid life maps with details", async () => {
