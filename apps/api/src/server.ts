@@ -498,7 +498,7 @@ function makeRoutes(options: ServerOptions): Record<string, Handler> {
       .getAgents()
       .map((a) => (a.id === request.agentId && body.assumeState ? { ...a, state: body.assumeState } : a));
     const grants: ConsentGrant[] = store.getGrants();
-    if (body.assumeGrant && !grants.some((g) => g.agentId === request.agentId && g.capability === request.capability)) {
+    if (body.assumeGrant && !grants.some((g) => g.agentId === request.agentId && g.capability === request.capability && isGrantValid(g, now))) {
       const day = 24 * 60 * 60 * 1000;
       grants.push({
         id: "g-simulated",

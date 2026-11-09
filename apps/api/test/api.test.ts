@@ -74,6 +74,93 @@ describe("API", () => {
     expect(agents.find((a) => a.id === "agent-family")?.state).toBe("draft");
   });
 
+  it("assumeGrant ignores a revoked grant and still simulates a fresh one", async () => {
+    const request = { agentId: "agent-family", capability: "read_calendar", domain: "family" };
+    const now = "2026-03-10T08:30:00-03:00";
+    const day = 24 * 60 * 60 * 1000;
+    store.saveGrant({
+      id: "g-revoked-test",
+      agentId: "agent-family",
+      capability: "read_calendar",
+      purpose: "test",
+      issuedAt: new Date(Date.parse(now) - 10 * day).toISOString(),
+      expiresAt: new Date(Date.parse(now) + 10 * day).toISOString(),
+      revokedAt: new Date(Date.parse(now) - 1 * day).toISOString(),
+    });
+    const countBefore = ((await call("GET", "/api/agents")).json.grants as unknown[]).length;
+
+    const withoutAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved" });
+    expect((withoutAssume.json.decision as { outcome: string; decidedBy: string }).decidedBy).toBe("grant_valid");
+    expect((withoutAssume.json.decision as { outcome: string }).outcome).toBe("deny");
+
+    const withAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved", assumeGrant: true });
+    const decision = withAssume.json.decision as { outcome: string; decidedBy: string };
+    expect(decision.decidedBy).not.toBe("grant_valid");
+    expect(decision.decidedBy).not.toBe("grant_present");
+
+    // The simulation must never persist the simulated grant back to the store.
+    const grants = (await call("GET", "/api/agents")).json.grants as { id: string }[];
+    expect(grants.length).toBe(countBefore);
+    expect(grants.map((g) => g.id)).toContain("g-revoked-test");
+    expect(grants.map((g) => g.id)).not.toContain("g-simulated");
+  });
+
+  it("assumeGrant ignores an expired grant and still simulates a fresh one", async () => {
+    const request = { agentId: "agent-family", capability: "read_messages", domain: "family" };
+    const now = "2026-03-10T08:30:00-03:00";
+    const day = 24 * 60 * 60 * 1000;
+    store.saveGrant({
+      id: "g-expired-test",
+      agentId: "agent-family",
+      capability: "read_messages",
+      purpose: "test",
+      issuedAt: new Date(Date.parse(now) - 40 * day).toISOString(),
+      expiresAt: new Date(Date.parse(now) - 10 * day).toISOString(),
+      revokedAt: null,
+    });
+    const countBefore = ((await call("GET", "/api/agents")).json.grants as unknown[]).length;
+
+    const withoutAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved" });
+    expect((withoutAssume.json.decision as { decidedBy: string }).decidedBy).toBe("grant_valid");
+
+    const withAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved", assumeGrant: true });
+    const decision = withAssume.json.decision as { decidedBy: string };
+    expect(decision.decidedBy).not.toBe("grant_valid");
+    expect(decision.decidedBy).not.toBe("grant_present");
+
+    const grants = (await call("GET", "/api/agents")).json.grants as { id: string }[];
+    expect(grants.length).toBe(countBefore);
+    expect(grants.map((g) => g.id)).toContain("g-expired-test");
+    expect(grants.map((g) => g.id)).not.toContain("g-simulated");
+  });
+
+  it("assumeGrant does not duplicate or alter an already-valid grant", async () => {
+    const request = { agentId: "agent-family", capability: "send_message", domain: "family" };
+    const now = "2026-03-10T08:30:00-03:00";
+    const day = 24 * 60 * 60 * 1000;
+    store.saveGrant({
+      id: "g-valid-test",
+      agentId: "agent-family",
+      capability: "send_message",
+      purpose: "test",
+      issuedAt: new Date(Date.parse(now) - 1 * day).toISOString(),
+      expiresAt: new Date(Date.parse(now) + 29 * day).toISOString(),
+      revokedAt: null,
+    });
+
+    const before = (await call("GET", "/api/agents")).json.grants as { id: string }[];
+    expect(before.map((g) => g.id)).toContain("g-valid-test");
+    const countBefore = before.length;
+
+    const withAssume = await call("POST", "/api/simulate/policy", { request, now, assumeState: "approved", assumeGrant: true });
+    expect((withAssume.json.decision as { decidedBy: string }).decidedBy).not.toBe("grant_valid");
+    expect((withAssume.json.decision as { decidedBy: string }).decidedBy).not.toBe("grant_present");
+
+    const after = (await call("GET", "/api/agents")).json.grants as { id: string }[];
+    expect(after.map((g) => g.id)).toEqual(before.map((g) => g.id));
+    expect(after.length).toBe(countBefore);
+  });
+
   it("rejects invalid life maps with details", async () => {
     const { status, json } = await call("PUT", "/api/lifemap", { lifeMap: { ...demoLifeMap, schemaVersion: 2 } });
     expect(status).toBe(400);
